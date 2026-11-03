@@ -10,6 +10,9 @@ import { icons, mark } from '../ui/icons';
 import { isModalOpen, closeModal, showModal, toast } from '../ui/modal';
 import type { MatchHost, ModeController } from './mode';
 import { esc, ot } from './strings';
+import { tierOf } from '../core/elo';
+import { applyRatedResult } from '../net/rating';
+import { tierBadge, tierName } from './tierBadge';
 
 export interface MatchScreenHooks {
   /** Player pressed "Room" / "Back to room". */
@@ -127,7 +130,9 @@ export class MatchScreen implements ModeController {
       const card = $(`pl${p}`);
       const info = d?.players[p];
       card.querySelector('.pm')!.innerHTML = mark(p);
-      card.querySelector('.pn')!.textContent = info ? `${avatarOf(info.avatar)} ${info.name}${p === mine ? ` (${ot('room.you')})` : ''}` : '…';
+      card.querySelector('.pn')!.textContent = info
+        ? `${avatarOf(info.avatar)} ${info.name}${p === mine ? ` (${ot('room.you')})` : ''} ${d?.type !== 'casual' ? tierOf(info.rating).def.icon : ''}`
+        : '…';
       card.querySelector('.ps')!.textContent = info ? String(info.rating) : '';
       card.classList.toggle('on', !!d && !d.result && d.turn === p);
     }
@@ -217,20 +222,35 @@ export class MatchScreen implements ModeController {
               ? ot('m.r.abandon', { name: loser })
               : ot('m.r.draw');
     const tone = !r.winner ? 'draw' : won ? 'win' : 'lose';
-    setTimeout(
-      () =>
-        showModal({
-          title: this.resultTitle(r, d),
-          tone,
-          bodyCenter: true,
-          body: `<div class="big">${r.winner ? mark(r.winner) : mark('X') + mark('O')}</div><p>${esc(reason)}</p>`,
-          buttons: [
-            { label: ot('m.view') },
-            { label: ot('m.rematch'), kind: 'primary', onClick: () => this.hooks.onBackToRoom() },
-          ],
-        }),
-      r.reason === 'five' ? 1300 : 250,
-    );
+    // Ranked / bot games: update ratings (exactly once, whoever gets there first).
+    const rated = d.type !== 'casual' ? applyRatedResult(this.be, this.roomId, d, this.uid).catch((e) => {
+      console.warn('[match] rating update failed', e);
+      return null;
+    }) : Promise.resolve(null);
+    const wait = new Promise((res) => setTimeout(res, r.reason === 'five' ? 1300 : 250));
+    void Promise.all([rated, wait]).then(([change]) => {
+      if (this.resultShown !== d.seq || !this.sync.doc || this.sync.doc.seq !== d.seq) return;
+      let extra = '';
+      if (change) {
+        const sign = change.delta > 0 ? '+' : '';
+        extra += `<p class="delta ${change.delta >= 0 ? 'up' : 'down'}">${esc(ot('m.delta', { before: change.before, after: change.after, delta: sign + change.delta }))}</p>`;
+        extra += `<div class="res-tier">${tierBadge(change.after)}</div>`;
+        if (change.promoted) {
+          extra += `<p class="promo">🎉 ${esc(ot('m.promoted', { tier: tierName(tierOf(change.after)) }))}</p>`;
+          sfx.win();
+        }
+      }
+      showModal({
+        title: this.resultTitle(r, d),
+        tone,
+        bodyCenter: true,
+        body: `<div class="big">${r.winner ? mark(r.winner) : mark('X') + mark('O')}</div><p>${esc(reason)}</p>${extra}`,
+        buttons: [
+          { label: ot('m.view') },
+          { label: ot('m.rematch'), kind: 'primary', onClick: () => this.hooks.onBackToRoom() },
+        ],
+      });
+    });
   }
 
   private onDrawOffer(from: Side) {

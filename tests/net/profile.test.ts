@@ -71,3 +71,15 @@ describe('text filter', () => {
     expect(validateName('Cáo Neon')).toBeNull();
   });
 });
+
+describe('seasons', () => {
+  it('soft-resets the rating when /config/season moves on', async () => {
+    const store = new MemoryStore();
+    const be = client(store, 's1');
+    await new ProfileService(be).init();
+    await be.db.update({ 'stats/s1/rating': 1600, 'stats/s1/peak': 1700, 'stats/s1/streak': 4, 'config/season': 2 });
+    const ps = new ProfileService(be);
+    await ps.init();
+    expect(ps.stats).toMatchObject({ season: 2, rating: 1300, peak: 1300, streak: 0 });
+  });
+});

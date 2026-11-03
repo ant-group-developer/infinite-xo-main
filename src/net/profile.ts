@@ -2,6 +2,7 @@ import type { AuthUser } from './auth';
 import type { Backend } from './backend';
 import { SERVER_TS, type Unsub } from './db';
 import { validateName } from './filter';
+import { seasonReset } from '../core/elo';
 import { freshStats, guessCountry, type PlayerStats, type UserProfile } from './schema';
 
 export class ProfileError extends Error {
@@ -59,6 +60,18 @@ export class ProfileService {
     if (!stats) {
       stats = freshStats(profile);
       await db.set(`stats/${uid}`, stats);
+    }
+    // New season (admin bumps /config/season in the console): soft-reset myself.
+    const season = (await db.get<number>('config/season')) ?? 1;
+    if (stats.season < season) {
+      const rating = seasonReset(stats.rating);
+      await db.update({
+        [`stats/${uid}/season`]: stats.season + 1,
+        [`stats/${uid}/rating`]: rating,
+        [`stats/${uid}/peak`]: rating,
+        [`stats/${uid}/streak`]: 0,
+      });
+      stats = (await db.get<PlayerStats>(`stats/${uid}`))!;
     }
     this.profile = profile;
     this.stats = stats;

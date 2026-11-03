@@ -11,6 +11,9 @@ import { MatchScreen } from './MatchScreen';
 import type { MatchHost } from './mode';
 import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
+import { tierBadge, tierCard } from './tierBadge';
+import { leaderboard, myRank, recentHistory, type BoardRow } from '../net/rating';
+import type { HistoryEntry } from '../net/schema';
 
 type Tab = 'play' | 'rank' | 'profile';
 
@@ -32,6 +35,10 @@ export class OnlineHub {
   private state: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   private offs: Unsub[] = [];
   private rooms: { id: string; entry: RoomIndexEntry }[] | null = null;
+  private rankScope: 'global' | 'country' = 'global';
+  private board: BoardRow[] | null = null;
+  private rank: number | null | undefined = undefined;
+  private history: (HistoryEntry & { id: string })[] | null = null;
 
   constructor(private host: MatchHost) {
     this.el = document.getElementById('online')!;
@@ -263,6 +270,7 @@ export class OnlineHub {
     if (!me || !p) return;
     me.innerHTML = `<span class="av">${avatarOf(p.avatar)}</span>
       <span class="me-name">${esc(p.name)} <span class="flag">${flagOf(p.country)}</span></span>
+      ${s ? tierBadge(s.rating, this.rank ?? undefined, true) : ''}
       <span class="me-rating">${s ? s.rating : '—'}</span>`;
   }
 
@@ -270,10 +278,13 @@ export class OnlineHub {
     const body = this.el.querySelector<HTMLElement>('#hubBody');
     if (!body) return;
     if (this.tab === 'play') body.innerHTML = this.playTab();
-    else if (this.tab === 'rank') body.innerHTML = `<div class="hub-center"><p>🏆 ${ot('tab.rank')} — ${ot('soon')}</p></div>`;
-    else {
+    else if (this.tab === 'rank') {
+      body.innerHTML = this.rankTab();
+      if (this.board === null) void this.loadBoard();
+    } else {
       body.innerHTML = this.profileTab();
       this.bindProfileInputs();
+      if (this.history === null) void this.loadHistory();
     }
   }
 
@@ -309,17 +320,92 @@ export class OnlineHub {
     <div class="room-list">${list}</div>`;
   }
 
+  /* ------------------------------------------------------------ ranking */
+
+  private async loadBoard() {
+    if (!this.be) return;
+    try {
+      const country = this.rankScope === 'country' ? this.profile!.profile!.country : undefined;
+      const [rows, rank] = await Promise.all([leaderboard(this.be, { country }), myRank(this.be, this.profile!.uid)]);
+      this.board = rows;
+      this.rank = rank;
+    } catch (e) {
+      console.warn('[online] leaderboard failed', e);
+      this.board = [];
+    }
+    if (this.tab === 'rank') this.renderBody();
+    this.renderHeader();
+  }
+
+  private async loadHistory() {
+    if (!this.be) return;
+    try {
+      this.history = await recentHistory(this.be, this.profile!.uid);
+    } catch {
+      this.history = [];
+    }
+    if (this.tab === 'profile') this.renderBody();
+  }
+
+  private rankTab() {
+    const me = this.profile!.uid;
+    const s = this.profile!.stats!;
+    const scope = (id: 'global' | 'country', key: OKey) =>
+      `<button data-act="scope" data-scope="${id}" class="${this.rankScope === id ? 'on' : ''}">${ot(key)}</button>`;
+    const medal = ['🥇', '🥈', '🥉'];
+    const rows =
+      this.board === null
+        ? `<div class="hub-center"><div class="spinner"></div></div>`
+        : this.board.length === 0
+          ? `<p class="muted center">${ot('rank.empty')}</p>`
+          : this.board
+              .map(
+                (r) => `<div class="lb-row${r.uid === me ? ' me' : ''}">
+              <span class="lb-rank">${r.rank <= 3 ? medal[r.rank - 1] : r.rank}</span>
+              <span class="av sm">${avatarOf(r.stats.avatar)}</span>
+              <span class="lb-name"><b>${esc(r.stats.name)}</b> <span class="flag">${flagOf(r.stats.country)}</span><small>${r.stats.w}W · ${r.stats.l}L</small></span>
+              ${tierBadge(r.stats.rating, this.rankScope === 'global' ? r.rank : undefined, true)}
+              <span class="lb-rating">${r.stats.rating}</span>
+            </div>`,
+              )
+              .join('');
+    const myPos = this.rank ? `#${this.rank}` : s.games ? '1000+' : ot('rank.unranked');
+    return `<div class="seg lb-scope">${scope('global', 'rank.global')}${scope('country', 'rank.country')}</div>
+      <div class="lb-me">${ot('rank.me')}: <b>${myPos}</b> ${tierBadge(s.rating, this.rank ?? undefined, true)} <b>${s.rating}</b></div>
+      <div class="lb-list">${rows}</div>`;
+  }
+
+  private historyList() {
+    if (this.history === null) return `<div class="hub-center"><div class="spinner"></div></div>`;
+    if (!this.history.length) return `<p class="muted">${ot('rank.noHistory')}</p>`;
+    return `<div class="hist">${this.history
+      .map(
+        (h) => `<div class="hist-row ${h.res}">
+          <span class="hr-res">${h.res === 'w' ? 'W' : h.res === 'l' ? 'L' : 'D'}</span>
+          <span class="hr-opp">${esc(h.opp)} <small>(${h.oppRating})</small></span>
+          <span class="hr-delta">${h.delta > 0 ? '+' : ''}${h.delta}</span>
+          <span class="hr-after">${h.after}</span>
+        </div>`,
+      )
+      .join('')}</div>`;
+  }
+
   private profileTab() {
     const p = this.profile!.profile!;
     const s = this.profile!.stats!;
     const u = this.profile!.user!;
     const wr = s.games ? Math.round((s.w / s.games) * 100) : 0;
     return `<div class="prof">
+      ${tierCard(s.rating, this.rank ?? undefined)}
       <div class="stat-grid">
-        <div><b>${s.rating}</b><span>${ot('rating')}</span></div>
         <div><b>${s.games}</b><span>${ot('games')}</span></div>
         <div><b>${wr}%</b><span>${ot('winRate')}</span></div>
+        <div><b>${s.peak}</b><span>${ot('rank.peak')}</span></div>
+        <div><b>${s.w} / ${s.l} / ${s.d}</b><span>${ot('rank.wld')}</span></div>
+        <div><b>${s.streak}</b><span>${ot('rank.streak')}</span></div>
+        <div><b>${s.bestStreak}</b><span>${ot('rank.best')}</span></div>
       </div>
+      <div class="fld"><span>${ot('rank.history')}</span>${this.historyList()}</div>
       <label class="fld"><span>${ot('profile.name')}</span>
         <div class="row-in"><input id="pfName" maxlength="16" value="${esc(p.name)}" autocomplete="off" spellcheck="false" />
         <button class="btn primary" data-act="saveName">${ot('profile.save')}</button></div>
@@ -356,6 +442,8 @@ export class OnlineHub {
         return this.connect();
       case 'tab':
         this.tab = t.dataset.tab as Tab;
+        if (this.tab === 'rank') this.board = null;
+        if (this.tab === 'profile') this.history = null;
         this.el.querySelectorAll('.hub-tabs button').forEach((b) => b.classList.toggle('on', b === t));
         return this.renderBody();
       case 'create':
@@ -364,6 +452,11 @@ export class OnlineHub {
         return this.joinDialog();
       case 'enter':
         return this.enterRoom(t.dataset.id!);
+      case 'scope':
+        this.rankScope = t.dataset.scope as 'global' | 'country';
+        this.board = null;
+        this.renderBody();
+        return this.loadBoard();
       case 'refresh':
         this.rooms = null;
         this.renderBody();

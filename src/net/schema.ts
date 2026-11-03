@@ -22,6 +22,33 @@ export interface PlayerStats {
   name: string;
   avatar: number;
   country: string;
+  /** id of the last rated match applied (`<roomId>_<seq>`) */
+  lastMatch?: string;
+  /** anti-farming for games against bots: UTC day number + count */
+  botDay?: number;
+  botToday?: number;
+}
+
+export interface MatchRecord {
+  by: { uid: string; at: number };
+  applied?: boolean;
+  room: string;
+  seq: number;
+  type: RoomType;
+  winner?: Side | null;
+  reason: string;
+  at: number;
+  players: Record<Side, { uid: string; name: string; before: number; after: number; bot?: boolean }>;
+}
+
+export interface HistoryEntry {
+  opp: string;
+  oppRating: number;
+  oppBot?: boolean;
+  res: 'w' | 'l' | 'd';
+  delta: number;
+  after: number;
+  at: number;
 }
 
 export const START_RATING = 1000;

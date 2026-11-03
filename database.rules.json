@@ -33,34 +33,34 @@
         "rating"
       ],
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || (root.child('matches/' + newData.child('lastMatch').val() + '/by/uid').val() === auth.uid && !root.child('matches/' + newData.child('lastMatch').val() + '/applied').exists()))",
         ".validate": "newData.hasChildren(['rating', 'games', 'w', 'l', 'd', 'streak', 'bestStreak', 'peak', 'season', 'name', 'avatar', 'country'])",
         "rating": {
-          ".validate": "(!data.exists() && newData.val() === 1000) || newData.val() === data.val()"
+          ".validate": "((!data.exists() && newData.val() === 1000) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && newData.isNumber() && newData.val() >= 100 && newData.val() - data.val() <= 40 && data.val() - newData.val() <= 40 && (!(newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() === (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) || newData.val() >= data.val()) && (!(newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').exists() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() !== (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) || newData.val() <= data.val()) && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/' + (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O') + '/after').val() === newData.val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/' + (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O') + '/before').val() === data.val() && (!(newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/' + (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'O' : 'X') + '/bot').val() === true) || newData.parent().child('botToday').val() <= 15 || newData.val() === data.val()))) || ((newData.parent().child('season').val() === data.parent().child('season').val() + 1 && newData.parent().child('season').val() <= root.child('config/season').val()) && newData.val() - (1000 + (data.parent().child('rating').val() - 1000) / 2) <= 1 && (1000 + (data.parent().child('rating').val() - 1000) / 2) - newData.val() <= 1)"
         },
         "games": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && newData.val() === data.val() + 1)"
         },
         "w": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() === (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) && newData.val() === data.val() + 1)"
         },
         "l": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').exists() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() !== (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) && newData.val() === data.val() + 1)"
         },
         "d": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (!newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').exists()) && newData.val() === data.val() + 1)"
         },
         "streak": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "((!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (((newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() === (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) && newData.val() === data.val() + 1) || ((newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').exists() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('winner').val() !== (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'X' : 'O')) && newData.val() === 0)))) || ((newData.parent().child('season').val() === data.parent().child('season').val() + 1 && newData.parent().child('season').val() <= root.child('config/season').val()) && newData.val() === 0)"
         },
         "bestStreak": {
-          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && newData.val() > data.val() && newData.val() === newData.parent().child('streak').val())"
         },
         "peak": {
-          ".validate": "(!data.exists() && newData.val() === 1000) || newData.val() === data.val()"
+          ".validate": "((!data.exists() && newData.val() === 1000) || newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && newData.val() > data.val() && newData.val() === newData.parent().child('rating').val())) || ((newData.parent().child('season').val() === data.parent().child('season').val() + 1 && newData.parent().child('season').val() <= root.child('config/season').val()) && newData.val() === newData.parent().child('rating').val())"
         },
         "season": {
-          ".validate": "(!data.exists() && newData.val() === 1) || newData.val() === data.val()"
+          ".validate": "(!data.exists() && newData.val() === 1) || newData.val() === data.val() || (newData.val() === data.val() + 1 && newData.val() <= root.child('config/season').val())"
         },
         "name": {
           ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 16"
@@ -73,6 +73,15 @@
         },
         "$other": {
           ".validate": false
+        },
+        "lastMatch": {
+          ".validate": "newData.isString() && (newData.val() === data.val() || (newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)))"
+        },
+        "botDay": {
+          ".validate": "newData.isNumber() && (newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/' + (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'O' : 'X') + '/bot').val() === true) && newData.val() === ((now - now % 86400000) / 86400000)))"
+        },
+        "botToday": {
+          ".validate": "newData.isNumber() && (newData.val() === data.val() || ((newData.parent().child('lastMatch').exists() && newData.parent().child('lastMatch').val() !== data.parent().child('lastMatch').val() && newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('applied').val() === true && !root.child('matches/' + newData.parent().child('lastMatch').val() + '/applied').exists() && root.child('matches/' + newData.parent().child('lastMatch').val() + '/by/uid').val() === auth.uid && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid || newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/O/uid').val() === $uid)) && (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/' + (newData.parent().parent().parent().child('matches/' + newData.parent().child('lastMatch').val()).child('players/X/uid').val() === $uid ? 'O' : 'X') + '/bot').val() === true) && (newData.parent().child('botDay').val() === data.parent().child('botDay').val() ? newData.val() === data.val() + 1 : newData.val() === 1)))"
         }
       }
     },
@@ -329,6 +338,39 @@
           ".validate": false
         }
       }
+    },
+    "matches": {
+      ".read": "auth != null",
+      "$mid": {
+        "by": {
+          ".write": "auth != null && newData.child('uid').val() === auth.uid && newData.child('at').val() === now && (!data.exists() || (data.child('at').val() < now - 30000 && !data.parent().child('applied').exists()))",
+          ".validate": "newData.hasChildren(['uid', 'at'])"
+        },
+        ".write": "auth != null && !data.child('applied').exists() && data.child('by/uid').val() === auth.uid",
+        ".validate": "!newData.child('applied').exists() || (newData.child('applied').val() === true && $mid === newData.child('room').val() + '_' + newData.child('seq').val() && root.child('games/' + newData.child('room').val()).child('seq').val() === newData.child('seq').val() && root.child('games/' + newData.child('room').val()).child('result').exists() && root.child('games/' + newData.child('room').val()).child('type').val() === newData.child('type').val() && newData.child('type').val() !== 'casual' && root.child('games/' + newData.child('room').val()).child('players/X/uid').val() === newData.child('players/X/uid').val() && root.child('games/' + newData.child('room').val()).child('players/O/uid').val() === newData.child('players/O/uid').val() && root.child('games/' + newData.child('room').val()).child('result/winner').val() === newData.child('winner').val() && root.child('games/' + newData.child('room').val()).child('result/reason').val() === newData.child('reason').val())"
+      }
+    },
+    "history": {
+      "$uid": {
+        ".read": "auth != null",
+        "$mid": {
+          ".write": "auth != null && !data.exists() && root.child('matches/' + $mid + '/by/uid').val() === auth.uid && !root.child('matches/' + $mid + '/applied').exists() && newData.parent().parent().parent().child('matches/' + $mid + '/applied').val() === true",
+          ".validate": "newData.hasChildren(['opp', 'oppRating', 'res', 'delta', 'after', 'at']) && newData.child('at').val() === now && newData.child('opp').val().length <= 16"
+        }
+      }
+    },
+    "pairCount": {
+      "$pair": {
+        ".read": "auth != null",
+        "$day": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() + 1 : 1)"
+        }
+      }
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": false
     }
   }
 }
