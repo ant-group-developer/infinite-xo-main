@@ -22,14 +22,17 @@ import {
 } from 'firebase/database';
 import { SERVER_TS, type Db, type DisconnectOps, type TxResult, type Unsub } from '../db';
 
-/** Replace our SERVER_TS placeholder with the SDK's sentinel. */
+/**
+ * Replace our SERVER_TS placeholder with the SDK's sentinel and drop
+ * `undefined` fields (the SDK throws on them; LocalDb drops them via JSON).
+ */
 function sv(v: unknown): unknown {
   if (v === SERVER_TS) return serverTimestamp();
   if (v === null || typeof v !== 'object') return v;
   const o = v as Record<string, unknown>;
   if (o['.sv'] === 'timestamp' && Object.keys(o).length === 1) return serverTimestamp();
   const out: Record<string, unknown> = {};
-  for (const [k, x] of Object.entries(o)) out[k] = sv(x);
+  for (const [k, x] of Object.entries(o)) if (x !== undefined) out[k] = sv(x);
   return out;
 }
 

@@ -398,7 +398,7 @@ export class CanvasView implements BoardView {
     for (const major of [false, true]) {
       ctx.beginPath();
       for (let x = x0; x <= x1; x++) {
-        const isMajor = (x + 2) % 5 === 0 || (x + 2) % 5 === -0;
+        const isMajor = (((x + 2) % 5) + 5) % 5 === 0;
         if (isMajor !== major) continue;
         const [sx] = c.toScreen(x + 0.5, 0);
         const px = Math.round(sx) + 0.5;
@@ -406,7 +406,7 @@ export class CanvasView implements BoardView {
         ctx.lineTo(px, c.height);
       }
       for (let y = y0; y <= y1; y++) {
-        const isMajor = (y + 2) % 5 === 0 || (y + 2) % 5 === -0;
+        const isMajor = (((y + 2) % 5) + 5) % 5 === 0;
         if (isMajor !== major) continue;
         const [, sy] = c.toScreen(0, y + 0.5);
         const py = Math.round(sy) + 0.5;

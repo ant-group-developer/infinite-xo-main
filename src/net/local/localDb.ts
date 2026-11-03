@@ -163,11 +163,21 @@ export class LocalDb implements Db {
     return makePushKey(this.store.now());
   }
 
-  /** Optimistic like Firebase: run fn on the latest value, compare-and-set, retry. */
+  /** Is `segs` (or an ancestor) watched by an onValue listener, i.e. "cached" like in the Firebase SDK? */
+  private isCached(segs: string[]) {
+    for (const l of this.values) if (l.path.length <= segs.length && l.path.every((s, i) => s === segs[i])) return true;
+    return false;
+  }
+
+  /**
+   * Optimistic like Firebase: run fn on the latest value, compare-and-set, retry.
+   * Like the real SDK, an uncached path is first tried with `null` (fn must
+   * not treat that as "gone" and abort).
+   */
   async transaction<T>(path: string, fn: (cur: T | null) => T | null | undefined): Promise<TxResult<T>> {
     const segs = segments(path);
     for (let attempt = 0; attempt < 25; attempt++) {
-      const cur = clone(getAt(this.store.read(), segs)) as T | null;
+      const cur = (attempt === 0 && !this.isCached(segs) ? null : clone(getAt(this.store.read(), segs))) as T | null;
       const next = fn(clone(cur));
       if (next === undefined) return { committed: false, value: cur };
       const ok = await this.store.apply([{ path, value: next }], { path, expect: JSON.stringify(cur) });

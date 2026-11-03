@@ -179,12 +179,20 @@ export class Matchmaker {
 
     // 2. create the room (I host), 3. claim the opponent's ticket for it
     const roomId = await createRoom(this.be, this.uid, this.me, { name: 'Ranked', visibility: 'private', type: 'ranked' });
-    const claim = await db.transaction<QueueEntry>(`queue/${other}`, (cur) =>
-      cur && cur.state === 'waiting' ? { ...cur, state: 'matched', by: this.uid, match: roomId } : undefined,
-    );
-    if (!claim.committed) {
+    // Firebase first runs a transaction with `null` when the node is not cached
+    // locally; returning null (= "no change") makes it retry with the server
+    // value instead of giving up. Success = the ticket now points at our room.
+    const claim = await db.transaction<QueueEntry>(`queue/${other}`, (cur) => {
+      if (cur === null) return null;
+      return cur.state === 'waiting' ? { ...cur, state: 'matched', by: this.uid, match: roomId } : undefined;
+    });
+    if (!claim.committed || claim.value?.match !== roomId || claim.value?.by !== this.uid) {
       await deleteRoom(this.be, roomId);
-      await db.transaction<QueueEntry>(`queue/${this.uid}`, (cur) => (cur ? { ...cur, state: 'waiting', by: undefined } : undefined));
+      await db.transaction<QueueEntry>(`queue/${this.uid}`, (cur) => {
+        if (!cur) return undefined;
+        const { by: _by, ...rest } = cur;
+        return { ...rest, state: 'waiting' };
+      });
       return false;
     }
 
