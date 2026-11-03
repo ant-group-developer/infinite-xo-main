@@ -1,3 +1,4 @@
+import { firebaseConfig } from '../runtimeConfig';
 import type { AuthService } from './auth';
 import type { Db } from './db';
 
@@ -7,20 +8,12 @@ export interface Backend {
   auth: AuthService;
 }
 
-/** Firebase web config from Vite env (`.env.local`, see .env.example). Not a secret. */
+/**
+ * Firebase web config: runtime /config.js (Docker env) first, then Vite
+ * build-time env (.env.local). Not a secret. Null → local backend.
+ */
 export function firebaseConfigFromEnv() {
-  const e = import.meta.env;
-  if (!e.VITE_FIREBASE_API_KEY || !e.VITE_FIREBASE_DATABASE_URL) return null;
-  return {
-    apiKey: e.VITE_FIREBASE_API_KEY as string,
-    authDomain: e.VITE_FIREBASE_AUTH_DOMAIN as string,
-    databaseURL: e.VITE_FIREBASE_DATABASE_URL as string,
-    projectId: e.VITE_FIREBASE_PROJECT_ID as string,
-    storageBucket: e.VITE_FIREBASE_STORAGE_BUCKET as string,
-    messagingSenderId: e.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
-    appId: e.VITE_FIREBASE_APP_ID as string,
-    measurementId: e.VITE_FIREBASE_MEASUREMENT_ID as string | undefined,
-  };
+  return firebaseConfig();
 }
 
 let backend: Promise<Backend> | null = null;

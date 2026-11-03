@@ -1,0 +1,15 @@
+# docker compose up -d --build
+# Configuration comes from .env (copy .env.example). See docs/DEPLOY.md.
+services:
+  web:
+    build: .
+    image: infinite-xo:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: ${PORT:-8080}
+      FRAME_ANCESTORS: ${FRAME_ANCESTORS:-*}
+    ports:
+      - "${HOST_PORT:-8080}:${PORT:-8080}"
+    restart: unless-stopped

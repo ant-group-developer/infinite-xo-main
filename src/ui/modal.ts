@@ -58,7 +58,8 @@ export function showModal(opts: ModalOptions) {
   }
   o.appendChild(m);
   o.classList.add('open');
-  (btns.querySelector<HTMLButtonElement>('.primary') ?? btns.querySelector<HTMLButtonElement>('button'))?.focus();
+  // preventScroll: a tall dialog must open at its title, not scrolled down to the button
+  (btns.querySelector<HTMLButtonElement>('.primary') ?? btns.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
 
   const dismissible = opts.dismissible ?? true;
   if (dismissible) {

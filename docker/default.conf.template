@@ -1,0 +1,43 @@
+# Rendered by the nginx image at start-up: ${PORT} and ${FRAME_ANCESTORS} come
+# from the environment (see Dockerfile / docs/DEPLOY.md).
+server {
+    listen ${PORT};
+    listen [::]:${PORT};
+    server_name _;
+    server_tokens off;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Note: add_header in a location replaces inherited headers, so every
+    # location includes the shared headers explicitly.
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Hashed build output: cache forever.
+    location /assets/ {
+        include /etc/nginx/conf.d/app-headers.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Runtime config + the page itself must always be fresh.
+    location = /config.js {
+        include /etc/nginx/conf.d/app-headers.inc;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location / {
+        include /etc/nginx/conf.d/app-headers.inc;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

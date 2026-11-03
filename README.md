@@ -21,6 +21,15 @@ npm run build      # typecheck + build ra dist/
 - Tô sáng toàn bộ chuỗi thắng (kể cả > 5), mũi tên chỉ nước cuối khi nó ở ngoài màn hình.
 - Thống kê thắng/thua/hòa theo độ khó + chuỗi thắng (localStorage), âm thanh synth, tiếng Việt / English.
 
+## Deploy (Docker)
+
+```bash
+cp .env.example .env   # cổng, FRAME_ANCESTORS (nhúng iframe), Firebase…
+docker compose up -d --build
+```
+
+Cấu hình đọc từ biến môi trường **lúc chạy** (không cần build lại khi đổi). Chi tiết, đoạn nhúng iframe: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
 ## Tài liệu
 
 - [`docs/RESEARCH-POKI.md`](docs/RESEARCH-POKI.md) — phân tích source game Poki.

@@ -1,0 +1,11 @@
+# Shared response headers (rendered to /etc/nginx/conf.d/app-headers.inc).
+
+# Who may embed the game in an <iframe>. Deliberately NO X-Frame-Options
+# (it cannot express "these sites only" and would block embedding).
+#   FRAME_ANCESTORS="*"                                   any site (default)
+#   FRAME_ANCESTORS="'self' https://example.com https://*.example.com"
+#   FRAME_ANCESTORS="'none'"                              never embeddable
+add_header Content-Security-Policy "frame-ancestors ${FRAME_ANCESTORS}" always;
+
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;

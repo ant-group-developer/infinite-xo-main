@@ -1,0 +1,19 @@
+node_modules
+dist
+.git
+.firebase
+*.log
+
+# never bake environment-specific values into the image
+.env
+.env.*
+!.env.example
+
+# not needed to build the web app
+tests
+bench
+docs
+scripts
+database.rules.json
+firebase.json
+.firebaserc

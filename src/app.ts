@@ -12,6 +12,7 @@ import type { BoardView } from './view/BoardView';
 import { CanvasView } from './view2d/CanvasView';
 import { OnlineHub } from './online/OnlineHub';
 import { ProfilePage } from './online/ProfilePage';
+import { onlineEnabled } from './runtimeConfig';
 
 type Opp = 'bot' | 'two';
 const LEVELS: Level[] = ['easy', 'medium', 'hard'];
@@ -539,6 +540,7 @@ export class App {
     $('logoT').textContent = t('title');
     document.title = getLang() === 'vi' ? 'XO Vô Hạn — Infinite XO' : 'Infinite XO';
     setBtn('bProfile', icons.user, getLang() === 'vi' ? 'Hồ sơ' : 'Profile', false);
+    $('bProfile').style.display = onlineEnabled() ? '' : 'none';
     setBtn('bStats', icons.trophy, t('stats'), false);
     setBtn('bSound', this.settings.sound ? icons.soundOn : icons.soundOff, t('sound'), false);
     setBtn('bHelp', icons.help, t('help'), false);
@@ -572,14 +574,16 @@ export class App {
       };
       opp.appendChild(b);
     }
-    const ob = document.createElement('button');
-    ob.className = 'online-btn';
-    ob.innerHTML = `${icons.globe}<span>Online</span>`;
-    ob.onclick = () => {
-      sfx.click();
-      void this.hub.open();
-    };
-    opp.appendChild(ob);
+    if (onlineEnabled()) {
+      const ob = document.createElement('button');
+      ob.className = 'online-btn';
+      ob.innerHTML = `${icons.globe}<span>Online</span>`;
+      ob.onclick = () => {
+        sfx.click();
+        void this.hub.open();
+      };
+      opp.appendChild(ob);
+    }
 
     const lv = $('levels');
     lv.innerHTML = '';

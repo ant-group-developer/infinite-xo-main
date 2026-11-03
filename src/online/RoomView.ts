@@ -3,6 +3,7 @@ import type { Backend } from '../net/backend';
 import { ChatService } from '../net/chat';
 import type { Unsub } from '../net/db';
 import { resignIfPlaying, startMatch } from '../net/match';
+import { publicUrl } from '../runtimeConfig';
 import { REPORT_REASONS, reportPlayer } from '../net/reports';
 import { RoomError, RoomSession, type MemberInfo } from '../net/rooms';
 import { avatarOf, flagOf, type ChatMessage, type RoomMember, type Side } from '../net/schema';
@@ -322,7 +323,8 @@ export class RoomView {
   private async copyLink() {
     const code = this.session.meta?.code;
     if (!code) return;
-    const url = `${location.origin}${location.pathname}#/r/${code}`;
+    const base = publicUrl() || `${location.origin}${location.pathname}`;
+    const url = `${base.replace(/#.*$/, '')}#/r/${code}`;
     try {
       await navigator.clipboard.writeText(url);
       toast(ot('room.copied'));
