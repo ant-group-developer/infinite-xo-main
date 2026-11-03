@@ -9,6 +9,7 @@ import { icons, mark } from './ui/icons';
 import { isModalOpen, justClosed, showModal, toast } from './ui/modal';
 import type { BoardView } from './view/BoardView';
 import { CanvasView } from './view2d/CanvasView';
+import { OnlineHub } from './online/OnlineHub';
 
 type Opp = 'bot' | 'two';
 const LEVELS: Level[] = ['easy', 'medium', 'hard'];
@@ -52,6 +53,7 @@ export class App {
   private view: BoardView;
   private bot = new BotClient();
   private hintBot = new BotClient();
+  readonly hub = new OnlineHub();
 
   private settings: Settings = load<Settings>('settings', {
     opp: 'bot',
@@ -463,6 +465,7 @@ export class App {
       setLang(this.settings.lang);
       this.saveSettings();
       this.applyTexts();
+      this.hub.refresh();
     });
   }
 
@@ -509,6 +512,14 @@ export class App {
       };
       opp.appendChild(b);
     }
+    const ob = document.createElement('button');
+    ob.className = 'online-btn';
+    ob.innerHTML = `${icons.globe}<span>Online</span>`;
+    ob.onclick = () => {
+      sfx.click();
+      void this.hub.open();
+    };
+    opp.appendChild(ob);
 
     const lv = $('levels');
     lv.innerHTML = '';

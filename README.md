@@ -26,3 +26,9 @@ npm run build      # typecheck + build ra dist/
 - [`docs/RESEARCH-POKI.md`](docs/RESEARCH-POKI.md) — phân tích source game Poki.
 - [`docs/DESIGN.md`](docs/DESIGN.md) — kiến trúc, AI, renderer.
 - [`docs/THREEJS-3D.md`](docs/THREEJS-3D.md) — nghiên cứu & kế hoạch bản 3D bằng Three.js.
+
+## Online (đang phát triển — xem `docs/ONLINE-PLAN.md`)
+
+- **Chưa cấu hình Firebase** → chế độ Online chạy bằng backend **Local** (giả lập trong trình duyệt). Mỗi **tab** là một người chơi khác nhau, dữ liệu chung qua `localStorage` → mở 2–3 tab để thử phòng / chat / ghép trận.
+- **Dùng Firebase thật:** copy `.env.example` → `.env.local`, điền config (hướng dẫn: `docs/FIREBASE-SETUP.md`), chạy lại `npm run dev`. Thêm `?local=1` vào URL để ép dùng backend Local.
+- Luật bảo mật: `database.rules.json` (deploy: `npx firebase-tools deploy --only database`).

@@ -1,0 +1,53 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name', 'avatar', 'country', 'createdAt', 'linked'])",
+        "name": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 16" },
+        "avatar": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 32" },
+        "country": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z]{2}$/)" },
+        "createdAt": { ".validate": "(!data.exists() && newData.val() === now) || newData.val() === data.val()" },
+        "linked": { ".validate": "newData.isBoolean()" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "stats": {
+      ".read": "auth != null",
+      ".indexOn": ["rating"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['rating', 'games', 'w', 'l', 'd', 'streak', 'bestStreak', 'peak', 'season', 'name', 'avatar', 'country'])",
+        "rating": { ".validate": "(!data.exists() && newData.val() === 1000) || newData.val() === data.val()" },
+        "games": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "w": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "l": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "d": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "streak": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "bestStreak": { ".validate": "(!data.exists() && newData.val() === 0) || newData.val() === data.val()" },
+        "peak": { ".validate": "(!data.exists() && newData.val() === 1000) || newData.val() === data.val()" },
+        "season": { ".validate": "(!data.exists() && newData.val() === 1) || newData.val() === data.val()" },
+        "name": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 16" },
+        "avatar": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 32" },
+        "country": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z]{2}$/)" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "status": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['state', 'lastSeen'])",
+        "state": { ".validate": "newData.val() === 'online' || newData.val() === 'offline'" },
+        "lastSeen": { ".validate": "newData.val() === now" },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
