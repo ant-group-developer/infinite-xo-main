@@ -221,18 +221,43 @@ export class RoomSession {
     this.heartbeat = setInterval(() => void this.touch(), 60_000);
   }
 
-  private async registerMember() {
-    const { db } = this.be;
-    const path = `rooms/${this.id}/members/${this.uid}`;
-    await db.onDisconnect(path).remove();
-    const existing = await db.get<RoomMember>(path);
-    await db.set(path, { ...this.me, joinedAt: existing?.joinedAt ?? SERVER_TS });
+  private registering: Promise<void> = Promise.resolve();
+
+  /**
+   * Add / refresh my membership. Calls are serialised: joining triggers it
+   * both directly and from the "connected" event (which Firebase fires right
+   * away), and two concurrent "create" writes would both stamp a new joinedAt
+   * — the rules (joinedAt is write-once) then reject the second one.
+   */
+  private registerMember(): Promise<void> {
+    const run = async () => {
+      const { db } = this.be;
+      const path = `rooms/${this.id}/members/${this.uid}`;
+      await db.onDisconnect(path).remove();
+      const existing = await db.get<RoomMember>(path);
+      if (existing) {
+        // Already a member: refresh my info, never touch joinedAt.
+        await this.writeMyInfo();
+      } else {
+        await db.set(path, { ...this.me, joinedAt: SERVER_TS });
+      }
+    };
+    this.registering = this.registering.then(run, run);
+    return this.registering;
   }
 
   /** Update my displayed info (name/avatar/rating changed). */
   async updateMe(me: MemberInfo) {
     this.me = me;
-    if (!this.ended) await this.be.db.update({ [`rooms/${this.id}/members/${this.uid}`]: { ...me, joinedAt: this.members[this.uid]?.joinedAt ?? SERVER_TS } });
+    if (!this.ended && this.members[this.uid]) await this.writeMyInfo();
+  }
+
+  /** Field-level update of name/avatar/country/rating (joinedAt is write-once in the rules). */
+  private writeMyInfo() {
+    const path = `rooms/${this.id}/members/${this.uid}`;
+    const up: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(this.me)) up[`${path}/${k}`] = v;
+    return this.be.db.update(up);
   }
 
   /* ----- slots */

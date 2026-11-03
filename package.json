@@ -13,7 +13,10 @@
     "rules:build": "node scripts/gen-games-rules.cjs database.rules.json && node scripts/gen-rating-rules.cjs database.rules.json && node scripts/gen-mm-rules.cjs database.rules.json",
     "rules:deploy": "npx firebase-tools deploy --only database",
     "rules:smoke": "node scripts/rules-smoke.mjs",
-    "deploy": "npm run build && npx firebase-tools deploy --only hosting,database"
+    "deploy": "npm run build && npx firebase-tools deploy --only hosting,database",
+    "docker:up": "docker compose --env-file .env.local up -d --build",
+    "docker:down": "docker compose --env-file .env.local down",
+    "docker:logs": "docker compose --env-file .env.local logs -f"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

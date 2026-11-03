@@ -77,6 +77,29 @@ describe('rooms', () => {
     expect(sa.s.spectators.map(([u]) => u)).toEqual(['bob']);
   });
 
+  it('joining writes joinedAt exactly once (rules: write-once) even with the connected event racing', async () => {
+    const env = await setup();
+    const db = env.bob.db;
+    let joinedAtWrites = 0;
+    const count = (path: string, v: unknown) => {
+      if (path.endsWith('/members/bob') && v && typeof v === 'object' && 'joinedAt' in v) joinedAtWrites++;
+      if (path.endsWith('/members/bob/joinedAt')) joinedAtWrites++;
+    };
+    const set = db.set.bind(db);
+    const update = db.update.bind(db);
+    db.set = async (p, v) => (count(p, v), set(p, v));
+    db.update = async (vals) => {
+      for (const [p, v] of Object.entries(vals)) count(p, v);
+      return update(vals);
+    };
+    const sb = await env.join(env.bob, 'bob', 'Bob');
+    await settle();
+    await sb.s.updateMe({ name: 'Bobby', avatar: 2, country: 'VN', rating: 1000 });
+    await settle();
+    expect(joinedAtWrites).toBe(1);
+    expect(sb.s.members.bob.name).toBe('Bobby');
+  });
+
   it('joining a room that does not exist fails cleanly', async () => {
     const env = await setup();
     const s = new RoomSession(env.carol, 'carol', 'nope', info('Carol'));

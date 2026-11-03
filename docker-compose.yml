@@ -1,11 +1,14 @@
-# docker compose up -d --build
-# Configuration comes from .env (copy .env.example). See docs/DEPLOY.md.
+# Start:  npm run docker:up       (= docker compose --env-file .env.local up -d --build)
+#    or:  docker compose up -d --build   (reads .env)
+# Values come from .env / .env.local (see .env.example and docs/DEPLOY.md).
 services:
   web:
     build: .
     image: infinite-xo:latest
     env_file:
       - path: .env
+        required: false
+      - path: .env.local
         required: false
     environment:
       PORT: ${PORT:-8080}

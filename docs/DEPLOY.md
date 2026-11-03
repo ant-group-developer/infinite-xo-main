@@ -5,10 +5,13 @@ Image = trang web tĩnh (Vite build) phục vụ bởi **nginx**. Mọi cấu h�
 ## Chạy nhanh
 
 ```bash
-cp .env.example .env        # điền Firebase + cấu hình
-docker compose up -d --build
-# → http://<server>:8080   (HOST_PORT trong .env)
+cp .env.example .env.local  # điền Firebase + PORT/HOST_PORT…
+npm run docker:up           # = docker compose --env-file .env.local up -d --build
+# → http://<server>:<HOST_PORT>
+npm run docker:logs         # xem log;  npm run docker:down  để dừng
 ```
+
+Dùng file `.env` thay vì `.env.local` thì chạy thẳng `docker compose up -d --build`.
 
 Không dùng compose:
 
@@ -25,7 +28,7 @@ docker run -d --name infinite-xo -p 8080:8080 --env-file .env infinite-xo
 | `HOST_PORT` | `8080` | (compose) cổng mở ra máy chủ |
 | `FRAME_ANCESTORS` | `*` | Trang nào được nhúng game bằng iframe — xem bên dưới |
 | `VITE_ONLINE_ENABLED` | `true` | `false` = ẩn Online + Hồ sơ (game offline thuần) |
-| `VITE_PUBLIC_URL` | (rỗng) | URL gốc dùng trong link mời phòng (mặc định = URL của game) |
+| `VITE_PUBLIC_URL` | (rỗng) | **Để trống**: link mời tự lấy theo tên miền người chơi đang mở, trỏ bao nhiêu tên miền về cùng container cũng đúng. Chỉ đặt khi muốn ép link về một URL cố định |
 | `VITE_FIREBASE_API_KEY`, `…_AUTH_DOMAIN`, `…_DATABASE_URL`, `…_PROJECT_ID`, `…_STORAGE_BUCKET`, `…_MESSAGING_SENDER_ID`, `…_APP_ID`, `…_MEASUREMENT_ID` | (rỗng) | Firebase web config. Thiếu API key / database URL → Online dùng backend giả lập trong trình duyệt |
 
 Cùng tên biến với `.env.local` khi chạy `npm run dev`, nên một file `.env` dùng cho cả hai.
