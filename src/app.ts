@@ -82,6 +82,9 @@ export class App {
   private gameHuman: Player = this.settings.human;
 
   constructor() {
+    // Portal nhúng game (ANT Play) truyền ?lang=vi|en: ưu tiên hơn ngôn ngữ đã lưu.
+    const langFromQuery = new URLSearchParams(location.search).get('lang');
+    if (langFromQuery === 'vi' || langFromQuery === 'en') this.settings.lang = langFromQuery;
     setLang(this.settings.lang);
     sfx.setEnabled(this.settings.sound);
 
@@ -463,7 +466,8 @@ export class App {
   }
 
   private showHelp() {
-    showModal({ title: t('help.title'), body: t('help.body'), buttons: [{ label: 'OK', kind: 'primary' }] });
+    const m = showModal({ title: t('help.title'), body: t('help.body'), buttons: [{ label: 'OK', kind: 'primary' }] });
+    m.dataset.panel = 'help';
   }
 
   private showStats() {
@@ -484,6 +488,7 @@ export class App {
       <div style="text-align:center"><button class="link-btn" id="bResetStats">${t('stats.reset')}</button></div>`,
       buttons: [{ label: t('close'), kind: 'primary' }],
     });
+    m.dataset.panel = 'stats';
     m.querySelector<HTMLButtonElement>('#bResetStats')!.onclick = () => {
       this.stats = freshStats();
       save('stats', this.stats);
@@ -519,14 +524,22 @@ export class App {
       this.saveSettings();
       this.applyTexts();
     });
-    on('bLang', () => {
-      this.settings.lang = getLang() === 'vi' ? 'en' : 'vi';
-      setLang(this.settings.lang);
-      this.saveSettings();
-      this.applyTexts();
-      this.hub.refresh();
-      this.profilePage.refresh();
-    });
+    on('bLang', () => this.changeLang(getLang() === 'vi' ? 'en' : 'vi'));
+  }
+
+  /** Đổi ngôn ngữ và vẽ lại chữ (nút EN/VI trong game, hoặc portal gửi postMessage). */
+  changeLang(lang: Lang) {
+    if (lang === getLang()) return;
+    // Hộp "Cách chơi" / "Thống kê" đang mở thì mở lại bằng ngôn ngữ mới.
+    const openPanel = isModalOpen() ? document.querySelector<HTMLElement>('#overlay .modal')?.dataset.panel : undefined;
+    this.settings.lang = lang;
+    setLang(lang);
+    this.saveSettings();
+    this.applyTexts();
+    this.hub.refresh();
+    this.profilePage.refresh();
+    if (openPanel === 'help') this.showHelp();
+    else if (openPanel === 'stats') this.showStats();
   }
 
   /** Static labels / icons (re-run on language or sound change). */

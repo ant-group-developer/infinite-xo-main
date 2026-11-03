@@ -24,6 +24,14 @@ function handleInvite() {
 window.addEventListener('hashchange', handleInvite);
 handleInvite();
 
+// Portal ANT Play đổi ngôn ngữ khi game đang mở: { type: 'ant-play:locale', locale: 'vi' | 'en' } từ trang cha.
+window.addEventListener('message', (event) => {
+  if (!isEmbedded() || event.source !== window.parent) return;
+  const data = event.data as { type?: unknown; locale?: unknown } | null;
+  if (data?.type !== 'ant-play:locale') return;
+  if (data.locale === 'vi' || data.locale === 'en') app.changeLang(data.locale);
+});
+
 // Let an embedding page know the game is ready (optional to listen for).
 if (isEmbedded()) {
   try {
