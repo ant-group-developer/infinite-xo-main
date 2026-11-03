@@ -27,8 +27,26 @@ npm run build      # typecheck + build ra dist/
 - [`docs/DESIGN.md`](docs/DESIGN.md) — kiến trúc, AI, renderer.
 - [`docs/THREEJS-3D.md`](docs/THREEJS-3D.md) — nghiên cứu & kế hoạch bản 3D bằng Three.js.
 
-## Online (đang phát triển — xem `docs/ONLINE-PLAN.md`)
+## Online
 
-- **Chưa cấu hình Firebase** → chế độ Online chạy bằng backend **Local** (giả lập trong trình duyệt). Mỗi **tab** là một người chơi khác nhau, dữ liệu chung qua `localStorage` → mở 2–3 tab để thử phòng / chat / ghép trận.
-- **Dùng Firebase thật:** copy `.env.example` → `.env.local`, điền config (hướng dẫn: `docs/FIREBASE-SETUP.md`), chạy lại `npm run dev`. Thêm `?local=1` vào URL để ép dùng backend Local.
-- Luật bảo mật: `database.rules.json` (deploy: `npx firebase-tools deploy --only database`).
+Phòng chơi (2 ghế + người xem, chat, chủ phòng kick, báo cáo), ghép trận xếp hạng (có bot đóng vai người khi vắng), Elo + bậc Đồng → Thách Đấu, bảng xếp hạng, lịch sử trận, mùa giải. Chi tiết: `docs/ONLINE-PLAN.md`.
+
+### Chạy thử không cần Firebase
+Chưa có `.env.local` → Online dùng backend **Local**: một SharedWorker trong trình duyệt đóng vai server. **Mỗi tab là một người chơi** → mở 2–3 tab để thử phòng, chat, kick, ghép trận, người xem.
+
+### Dùng Firebase thật
+1. Tạo project theo `docs/FIREBASE-SETUP.md`; copy `.env.example` → `.env.local` và điền config.
+2. Đăng nhập Firebase CLI một lần (`npx firebase-tools login`, phải tự gõ vì cần trình duyệt), rồi `npm run rules:deploy` để đẩy `database.rules.json`.
+3. `npm run rules:smoke` — kiểm tra luật trên project thật bằng 2 tài khoản ẩn danh: thao tác hợp lệ phải được phép, gian lận phải bị chặn.
+4. `npm run dev` (thêm `?local=1` vào URL để quay lại backend Local). Deploy web + luật: `npm run deploy`.
+
+### Cấu hình trên Firebase console (Realtime Database → Data)
+| Node | Ý nghĩa |
+|---|---|
+| `/config/matchmaking` | `{ botEnabled: true, botAfterMinMs: 4000, botAfterMaxMs: 12000 }` — bật/tắt bot và thời gian chờ trước khi ghép bot |
+| `/config/season` | số mùa hiện tại (tăng lên 2, 3… để mở mùa mới; điểm tự reset mềm khi người chơi đăng nhập) |
+| `/reports` | báo cáo người chơi (client chỉ ghi được, xem trên console) |
+
+### Luật bảo mật
+`database.rules.json` là bản gốc; các phần phức tạp được sinh lại bằng `npm run rules:build` (`scripts/gen-*.cjs`).
+Trên gói Spark (không có Cloud Functions), luật đóng vai trọng tài: đúng lượt, không đánh đè, 2 phút/nước, **kiểm tra lại chuỗi 5 + luật chặn 2 đầu từ bàn cờ**, điểm chỉ thay đổi kèm hồ sơ trận hợp lệ (tối đa ±40, đúng chiều thắng/thua, một lần mỗi trận).

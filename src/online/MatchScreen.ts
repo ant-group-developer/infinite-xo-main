@@ -14,6 +14,7 @@ import { tierOf } from '../core/elo';
 import { applyRatedResult } from '../net/rating';
 import { tierBadge, tierName } from './tierBadge';
 import { BotDriver } from './BotDriver';
+import { track } from '../net/analytics';
 
 export interface MatchScreenHooks {
   /** Player pressed "Room" / "Back to room". */
@@ -247,6 +248,7 @@ export class MatchScreen implements ModeController {
               ? ot('m.r.abandon', { name: loser })
               : ot('m.r.draw');
     const tone = !r.winner ? 'draw' : won ? 'win' : 'lose';
+    track('match_end', { type: d.type, reason: r.reason, outcome: mine ? tone : 'spectator', moves: d.n });
     // Ranked / bot games: update ratings (exactly once, whoever gets there first).
     const rated = d.type !== 'casual' ? applyRatedResult(this.be, this.roomId, d, this.uid).catch((e) => {
       console.warn('[match] rating update failed', e);

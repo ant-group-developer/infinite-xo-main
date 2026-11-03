@@ -60,4 +60,4 @@ Lệnh `firebase login` cần mày tự gõ vì phải đăng nhập tương tá
 - [ ] Đã thêm `127.0.0.1` vào Authorized domains
 - [ ] (Tuỳ chọn) đã `firebase login`
 
-Trong lúc chờ, tao làm trước P1 trên **Firebase Emulator** (chạy giả lập trên máy, không cần project thật).
+Sau khi có config: điền vào `.env.local` (mẫu ở `.env.example`), chạy `npm run rules:deploy` rồi `npm run rules:smoke` để kiểm tra luật bảo mật trên project thật.

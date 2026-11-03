@@ -7,6 +7,22 @@
 
 ---
 
+## Trạng thái triển khai (2026-11-03, nhánh `feat/online`)
+
+| Phase | Commit | Nội dung |
+|---|---|---|
+| P1 Nền tảng | `566b6c5` | Lớp `Db`/`Auth` 2 bản cài đặt (Firebase + Local), hồ sơ, presence, liên kết Google |
+| P2 Phòng | `b57fd3a` | Mã phòng + link mời, ghế/người xem, kick, chuyển host, chat |
+| P3 Ván online | `ed629b5` | Đồng bộ nước, 2 phút/nước, hòa/đầu hàng/rời trận, đấu lại, người xem vào giữa ván |
+| P4 Xếp hạng | `05fdbf1` | Elo, bậc, bảng xếp hạng, lịch sử, mùa giải |
+| P5 Ghép trận | `9be9d35` | Hàng chờ + transaction, bot persona theo Elo |
+| P6 Hoàn thiện | commit cuối | Giới hạn 100 kết nối, báo cáo, Analytics, script deploy + kiểm tra luật |
+
+**Khác với plan:**
+- Máy không có Java → không dùng Firebase Emulator. Thay bằng backend **Local** (SharedWorker) cho dev + unit test, và `npm run rules:smoke` để kiểm tra luật trên project thật.
+- Luật **không** tính lại chính xác từng điểm Elo (dễ sai khi chưa test được). Thay vào đó: điểm chỉ đổi khi có hồ sơ trận khớp với ván đã được luật xác minh, tối đa ±40, đúng chiều thắng/thua, mỗi trận một lần.
+- **Chưa kiểm chứng trên project thật:** toàn bộ `database.rules.json` (đặc biệt phép tính số / ghép chuỗi trong luật kiểm tra chuỗi 5). Phải chạy `npm run rules:smoke` ngay khi có config.
+
 ## 0. Quyết định đã chốt
 
 | # | Quyết định |

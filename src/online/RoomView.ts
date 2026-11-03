@@ -3,6 +3,7 @@ import type { Backend } from '../net/backend';
 import { ChatService } from '../net/chat';
 import type { Unsub } from '../net/db';
 import { resignIfPlaying, startMatch } from '../net/match';
+import { REPORT_REASONS, reportPlayer } from '../net/reports';
 import { RoomError, RoomSession, type MemberInfo } from '../net/rooms';
 import { avatarOf, flagOf, type ChatMessage, type RoomMember, type Side } from '../net/schema';
 import { mark } from '../ui/icons';
@@ -183,8 +184,9 @@ export class RoomView {
     if (!m) {
       return `<div class="slot ${color} gone">${mark(side)}<span class="av">❔</span><span class="muted">${ot('room.offline')}</span>${kick}</div>`;
     }
+    const report = !me ? `<button class="x-btn rep" data-act="report" data-uid="${esc(uid)}" title="${ot('report.btn')}">🚩</button>` : '';
     return `<div class="slot ${color} ${ready ? 'ready' : ''} ${me ? 'me' : ''}">
-      ${kick}
+      ${kick}${report}
       ${mark(side)}
       <span class="av big">${avatarOf(m.avatar)}</span>
       <b class="nm">${esc(m.name)}${me ? ` <small>(${ot('room.you')})</small>` : ''}</b>
@@ -201,6 +203,7 @@ export class RoomView {
     return `<div class="chip-u">
       <span class="av sm">${avatarOf(m.avatar)}</span>
       <span>${esc(m.name)}${me ? ` (${ot('room.you')})` : ''}${isHost ? ' 👑' : ''}</span>
+      ${!me ? `<button class="x-btn" data-act="report" data-uid="${esc(uid)}" title="${ot('report.btn')}">🚩</button>` : ''}
       ${!me ? `<button class="x-btn" data-act="mute" data-uid="${esc(uid)}" title="${ot(muted ? 'room.unmute' : 'room.mute')}">${muted ? '🔇' : '💬'}</button>` : ''}
       ${s.isHost && !me ? `<button class="x-btn" data-act="kick" data-uid="${esc(uid)}" title="${ot('room.kick')}">✕</button>` : ''}
     </div>`;
@@ -262,6 +265,26 @@ export class RoomView {
           return await s.leaveSlot();
         case 'ready':
           return await s.setReady(!s.room?.ready?.[s.mySide!]);
+        case 'report': {
+          const uid = t.dataset.uid!;
+          const name = s.members[uid]?.name ?? '?';
+          const m = showModal({
+            title: ot('report.title', { name }),
+            body: `<div class="vis-pick">${REPORT_REASONS.map((r, i) => `<label><input type="radio" name="rr" value="${r}" ${i ? '' : 'checked'} /><span><b>${ot(('report.' + r) as OKey)}</b></span></label>`).join('')}</div>`,
+            buttons: [
+              { label: ot('cancel') },
+              {
+                label: ot('report.btn'),
+                kind: 'danger',
+                onClick: () => {
+                  const reason = (m.querySelector('input[name=rr]:checked') as HTMLInputElement).value as (typeof REPORT_REASONS)[number];
+                  void reportPlayer(this.be, this.uid, uid, reason, s.id).then(() => toast(ot('report.sent')));
+                },
+              },
+            ],
+          });
+          return;
+        }
         case 'mute':
           this.chat.toggleMute(t.dataset.uid!);
           return this.renderState();

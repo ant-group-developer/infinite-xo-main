@@ -405,6 +405,12 @@
           ".validate": false
         }
       }
+    },
+    "reports": {
+      "$id": {
+        ".write": "auth != null && !data.exists() && newData.child('by').val() === auth.uid",
+        ".validate": "newData.hasChildren(['by', 'target', 'reason', 'room', 'at']) && newData.child('at').val() === now && newData.child('target').isString() && newData.child('room').isString() && (newData.child('reason').val() === 'abuse' || newData.child('reason').val() === 'cheat' || newData.child('reason').val() === 'name' || newData.child('reason').val() === 'other')"
+      }
     }
   }
 }

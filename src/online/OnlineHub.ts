@@ -12,6 +12,7 @@ import { Matchmaker } from '../net/matchmaking';
 import type { MatchHost } from './mode';
 import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
+import { track } from '../net/analytics';
 import { tierBadge, tierCard } from './tierBadge';
 import { leaderboard, myRank, recentHistory, type BoardRow } from '../net/rating';
 import type { HistoryEntry } from '../net/schema';
@@ -44,14 +45,46 @@ export class OnlineHub {
   constructor(private host: MatchHost) {
     this.el = document.getElementById('online')!;
     this.el.addEventListener('click', (e) => void this.onClick(e));
+    // Spark plan = 100 simultaneous connections: drop ours while it is not needed.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.scheduleIdleDisconnect(60_000);
+      else if (this.isOpen || this.busy) this.wake();
+    });
   }
 
   get isOpen() {
     return !this.el.hidden;
   }
 
+  /** In a room, a match or the matchmaking queue: keep the connection. */
+  private get busy() {
+    return !!(this.room || this.match || this.mm);
+  }
+
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
+  private offline = false;
+
+  private scheduleIdleDisconnect(ms: number) {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (!this.be || this.busy || (this.isOpen && !document.hidden)) return;
+      this.be.db.goOffline();
+      this.offline = true;
+    }, ms);
+  }
+
+  private wake() {
+    clearTimeout(this.idleTimer);
+    if (this.be && this.offline) {
+      this.be.db.goOnline();
+      this.offline = false;
+    }
+  }
+
   async open() {
     this.show();
+    this.wake();
+    track('online_open');
     if (this.state === 'ready') return this.render();
     await this.connect();
   }
@@ -75,6 +108,7 @@ export class OnlineHub {
   close() {
     if (this.room || this.mm) return; // must leave the room / cancel the search first
     this.hide();
+    this.scheduleIdleDisconnect(30_000);
     if (location.hash.startsWith('#/')) history.replaceState(null, '', location.pathname + location.search);
   }
 
@@ -192,6 +226,7 @@ export class OnlineHub {
     const mm = new Matchmaker(this.be, this.profile!.uid, this.me());
     this.mm = mm;
     this.mmInfo = { elapsed: 0, window: 100 };
+    track('mm_search');
     mm.on((e) => {
       if (this.mm !== mm) return;
       if (e.type === 'searching') {
@@ -199,6 +234,7 @@ export class OnlineHub {
         this.renderSearch();
       } else if (e.type === 'matched') {
         this.mm = null;
+        track('mm_matched', { vs_bot: e.vsBot, wait_ms: Math.round(this.mmInfo.elapsed) });
         this.renderSearch(true);
         void this.enterRoom(e.roomId, { silent: true }).then(() => {
           if (e.host && this.room) this.openMatch();
@@ -323,7 +359,7 @@ export class OnlineHub {
       return;
     }
     if (this.state === 'error') {
-      this.el.innerHTML = `<div class="hub"><div class="hub-top">${this.backBtn()}</div><div class="hub-center"><p>${ot('connectFail')}</p><button class="btn primary" data-act="retry">${ot('retry')}</button></div></div>`;
+      this.el.innerHTML = `<div class="hub"><div class="hub-top">${this.backBtn()}</div><div class="hub-center"><p>${ot('busy')}</p><div class="row"><button class="btn" data-act="retry">${ot('retry')}</button><button class="btn primary" data-act="offlineBot">🤖 ${ot('playBot')}</button></div></div></div>`;
       return;
     }
     this.el.innerHTML = `<div class="hub">
@@ -519,6 +555,9 @@ export class OnlineHub {
     switch (act) {
       case 'close':
         return this.close();
+      case 'offlineBot':
+        this.hide();
+        return this.host.playOfflineBot();
       case 'retry':
         return this.connect();
       case 'tab':

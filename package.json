@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bench": "node -e \"process.env.BENCH=1;require('child_process').execSync('npx vitest run',{stdio:'inherit',env:process.env})\""
+    "bench": "node -e \"process.env.BENCH=1;require('child_process').execSync('npx vitest run',{stdio:'inherit',env:process.env})\"",
+    "rules:build": "node scripts/gen-games-rules.cjs database.rules.json && node scripts/gen-rating-rules.cjs database.rules.json && node scripts/gen-mm-rules.cjs database.rules.json",
+    "rules:deploy": "npx firebase-tools deploy --only database",
+    "rules:smoke": "node scripts/rules-smoke.mjs",
+    "deploy": "npm run build && npx firebase-tools deploy --only hosting,database"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

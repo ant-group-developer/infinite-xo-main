@@ -1704,3 +1704,8 @@ body.online-match .mid b {
   font-size: 13px;
   opacity: 0.8;
 }
+
+.x-btn.rep {
+  left: 8px;
+  right: auto;
+}

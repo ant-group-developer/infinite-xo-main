@@ -127,6 +127,12 @@ export class App {
     this.view.recenter(true);
   }
 
+  playOfflineBot() {
+    this.settings.opp = 'bot';
+    this.saveSettings();
+    this.startGame();
+  }
+
   showHint(cell: Cell | null) {
     this.view.showHint(cell);
   }

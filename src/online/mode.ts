@@ -19,4 +19,6 @@ export interface MatchHost {
   recenter(): void;
   reject(cell: Cell): void;
   render(): void;
+  /** Fallback when the server is unreachable / full: offline game vs the bot. */
+  playOfflineBot(): void;
 }

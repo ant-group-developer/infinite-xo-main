@@ -56,6 +56,17 @@ stats.$uid.botToday = {
   '.validate': `newData.isNumber() && (${same} || (${RATED} && ${OPP_BOT} && (${S}.child('botDay').val() === ${O}.child('botDay').val() ? ${plus1} : newData.val() === 1)))`,
 };
 
+/* Season soft reset (admin bumps /config/season; the player resets themself). */
+const NEWSEASON = "(newData.parent().child('season').val() === data.parent().child('season').val() + 1 && newData.parent().child('season').val() <= root.child('config/season').val())";
+const RESET = "(1000 + (data.parent().child('rating').val() - 1000) / 2)";
+stats.$uid.season = {
+  '.validate': "(!data.exists() && newData.val() === 1) || newData.val() === data.val() || (newData.val() === data.val() + 1 && newData.val() <= root.child('config/season').val())",
+};
+stats.$uid.rating['.validate'] = `(${stats.$uid.rating['.validate']}) || (${NEWSEASON} && newData.val() - ${RESET} <= 1 && ${RESET} - newData.val() <= 1)`;
+stats.$uid.peak['.validate'] = `(${stats.$uid.peak['.validate']}) || (${NEWSEASON} && newData.val() === newData.parent().child('rating').val())`;
+stats.$uid.streak['.validate'] = `(${stats.$uid.streak['.validate']}) || (${NEWSEASON} && newData.val() === 0)`;
+r.rules.config = { '.read': 'auth != null', '.write': false };
+
 /* ----------------------------------------------------------- /matches */
 const M = 'newData'; // at /matches/$mid
 const G = `root.child('games/' + ${M}.child('room').val())`;
