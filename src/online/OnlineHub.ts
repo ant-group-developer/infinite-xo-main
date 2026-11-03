@@ -1,11 +1,10 @@
 import { sfx } from '../audio';
-import { getLang } from '../i18n';
 import { getBackend, type Backend } from '../net/backend';
 import type { Unsub } from '../net/db';
 import { startPresence } from '../net/presence';
-import { ProfileError, ProfileService } from '../net/profile';
+import { ProfileService } from '../net/profile';
 import { RoomError, createRoom, findRoomByCode, listPublicRooms, type MemberInfo } from '../net/rooms';
-import { AVATARS, COUNTRIES, avatarOf, flagOf, type RoomIndexEntry } from '../net/schema';
+import { avatarOf, flagOf, type RoomIndexEntry } from '../net/schema';
 import { showModal, toast } from '../ui/modal';
 import { MatchScreen } from './MatchScreen';
 import { Matchmaker } from '../net/matchmaking';
@@ -13,9 +12,8 @@ import type { MatchHost } from './mode';
 import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
 import { track } from '../net/analytics';
-import { tierBadge, tierCard } from './tierBadge';
-import { leaderboard, myRank, recentHistory, type BoardRow } from '../net/rating';
-import type { HistoryEntry } from '../net/schema';
+import { tierBadge } from './tierBadge';
+import { leaderboard, myRank, type BoardRow } from '../net/rating';
 
 type Tab = 'play' | 'rank' | 'profile';
 
@@ -40,7 +38,8 @@ export class OnlineHub {
   private rankScope: 'global' | 'country' = 'global';
   private board: BoardRow[] | null = null;
   private rank: number | null | undefined = undefined;
-  private history: (HistoryEntry & { id: string })[] | null = null;
+  /** Opens the stand-alone profile page (set by App). */
+  onOpenProfile: (() => void) | null = null;
 
   constructor(private host: MatchHost) {
     this.el = document.getElementById('online')!;
@@ -64,7 +63,7 @@ export class OnlineHub {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private offline = false;
 
-  private scheduleIdleDisconnect(ms: number) {
+  scheduleIdleDisconnect(ms: number) {
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
       if (!this.be || this.busy || (this.isOpen && !document.hidden)) return;
@@ -73,7 +72,7 @@ export class OnlineHub {
     }, ms);
   }
 
-  private wake() {
+  wake() {
     clearTimeout(this.idleTimer);
     if (this.be && this.offline) {
       this.be.db.goOnline();
@@ -112,7 +111,20 @@ export class OnlineHub {
     if (location.hash.startsWith('#/')) history.replaceState(null, '', location.pathname + location.search);
   }
 
-  private async connect() {
+  /** Connect + sign in without showing the hub (used by the profile page). */
+  async ensureReady(): Promise<boolean> {
+    if (this.state !== 'ready') await this.connect();
+    return this.state === 'ready';
+  }
+
+  private connecting: Promise<void> | null = null;
+
+  private connect(): Promise<void> {
+    if (!this.connecting) this.connecting = this.doConnect().finally(() => (this.connecting = null));
+    return this.connecting;
+  }
+
+  private async doConnect() {
     this.state = 'loading';
     this.render();
     try {
@@ -363,9 +375,9 @@ export class OnlineHub {
       return;
     }
     this.el.innerHTML = `<div class="hub">
-      <div class="hub-top">${this.backBtn()}<div class="hub-me" id="hubMe"></div></div>
+      <div class="hub-top">${this.backBtn()}<button class="hub-me" id="hubMe" data-act="profile" title="${ot('tab.profile')}"></button></div>
       ${this.be!.mode === 'local' ? `<div class="hub-note">🧪 ${ot('localMode')}</div>` : ''}
-      <nav class="hub-tabs">${(['play', 'rank', 'profile'] as Tab[])
+      <nav class="hub-tabs">${(['play', 'rank'] as Tab[])
         .map((t) => `<button data-act="tab" data-tab="${t}" class="${this.tab === t ? 'on' : ''}">${ot(`tab.${t}` as OKey)}</button>`)
         .join('')}</nav>
       <section class="hub-body" id="hubBody"></section>
@@ -395,13 +407,9 @@ export class OnlineHub {
     const body = this.el.querySelector<HTMLElement>('#hubBody');
     if (!body) return;
     if (this.tab === 'play') body.innerHTML = this.playTab();
-    else if (this.tab === 'rank') {
+    else {
       body.innerHTML = this.rankTab();
       if (this.board === null) void this.loadBoard();
-    } else {
-      body.innerHTML = this.profileTab();
-      this.bindProfileInputs();
-      if (this.history === null) void this.loadHistory();
     }
   }
 
@@ -454,16 +462,6 @@ export class OnlineHub {
     this.renderHeader();
   }
 
-  private async loadHistory() {
-    if (!this.be) return;
-    try {
-      this.history = await recentHistory(this.be, this.profile!.uid);
-    } catch {
-      this.history = [];
-    }
-    if (this.tab === 'profile') this.renderBody();
-  }
-
   private rankTab() {
     const me = this.profile!.uid;
     const s = this.profile!.stats!;
@@ -492,59 +490,6 @@ export class OnlineHub {
       <div class="lb-list">${rows}</div>`;
   }
 
-  private historyList() {
-    if (this.history === null) return `<div class="hub-center"><div class="spinner"></div></div>`;
-    if (!this.history.length) return `<p class="muted">${ot('rank.noHistory')}</p>`;
-    return `<div class="hist">${this.history
-      .map(
-        (h) => `<div class="hist-row ${h.res}">
-          <span class="hr-res">${h.res === 'w' ? 'W' : h.res === 'l' ? 'L' : 'D'}</span>
-          <span class="hr-opp">${esc(h.opp)} <small>(${h.oppRating})</small></span>
-          <span class="hr-delta">${h.delta > 0 ? '+' : ''}${h.delta}</span>
-          <span class="hr-after">${h.after}</span>
-        </div>`,
-      )
-      .join('')}</div>`;
-  }
-
-  private profileTab() {
-    const p = this.profile!.profile!;
-    const s = this.profile!.stats!;
-    const u = this.profile!.user!;
-    const wr = s.games ? Math.round((s.w / s.games) * 100) : 0;
-    return `<div class="prof">
-      ${tierCard(s.rating, this.rank ?? undefined)}
-      <div class="stat-grid">
-        <div><b>${s.games}</b><span>${ot('games')}</span></div>
-        <div><b>${wr}%</b><span>${ot('winRate')}</span></div>
-        <div><b>${s.peak}</b><span>${ot('rank.peak')}</span></div>
-        <div><b>${s.w} / ${s.l} / ${s.d}</b><span>${ot('rank.wld')}</span></div>
-        <div><b>${s.streak}</b><span>${ot('rank.streak')}</span></div>
-        <div><b>${s.bestStreak}</b><span>${ot('rank.best')}</span></div>
-      </div>
-      <div class="fld"><span>${ot('rank.history')}</span>${this.historyList()}</div>
-      <label class="fld"><span>${ot('profile.name')}</span>
-        <div class="row-in"><input id="pfName" maxlength="16" value="${esc(p.name)}" autocomplete="off" spellcheck="false" />
-        <button class="btn primary" data-act="saveName">${ot('profile.save')}</button></div>
-        <small class="err" id="pfErr"></small>
-      </label>
-      <div class="fld"><span>${ot('profile.avatar')}</span>
-        <div class="av-grid">${AVATARS.map((a, i) => `<button data-act="avatar" data-i="${i}" class="${i === p.avatar ? 'on' : ''}">${a}</button>`).join('')}</div>
-      </div>
-      <label class="fld"><span>${ot('profile.country')}</span>
-        <select id="pfCountry">${COUNTRIES.map((c) => `<option value="${c}" ${c === p.country ? 'selected' : ''}>${flagOf(c)} ${esc(countryName(c))}</option>`).join('')}</select>
-      </label>
-      <div class="fld"><span>${ot('profile.account')}</span>
-        ${
-          u.isAnonymous
-            ? `<p class="muted">${ot('profile.guest')}</p><button class="btn google" data-act="link"><b>G</b> ${ot('profile.link')}</button>`
-            : `<p class="muted">✅ ${esc(ot('profile.linkedAs', { email: u.email ?? '' }))}</p>`
-        }
-      </div>
-      <p class="uid">${ot('profile.id')}: <code>${esc(u.uid)}</code></p>
-    </div>`;
-  }
-
   /* ------------------------------------------------------------ events */
 
   private async onClick(e: MouseEvent) {
@@ -563,7 +508,6 @@ export class OnlineHub {
       case 'tab':
         this.tab = t.dataset.tab as Tab;
         if (this.tab === 'rank') this.board = null;
-        if (this.tab === 'profile') this.history = null;
         this.el.querySelectorAll('.hub-tabs button').forEach((b) => b.classList.toggle('on', b === t));
         return this.renderBody();
       case 'quick':
@@ -585,53 +529,9 @@ export class OnlineHub {
         this.rooms = null;
         this.renderBody();
         return this.refreshRooms();
-      case 'saveName':
-        return this.saveName();
-      case 'avatar':
-        await this.profile!.update({ avatar: Number(t.dataset.i) });
-        return this.renderBody();
-      case 'link':
-        return this.link();
+      case 'profile':
+        return this.onOpenProfile?.();
     }
-  }
-
-  private bindProfileInputs() {
-    const sel = this.el.querySelector<HTMLSelectElement>('#pfCountry');
-    if (sel) sel.onchange = () => void this.profile!.update({ country: sel.value });
-  }
-
-  private async saveName() {
-    const input = this.el.querySelector<HTMLInputElement>('#pfName')!;
-    const err = this.el.querySelector<HTMLElement>('#pfErr')!;
-    try {
-      await this.profile!.update({ name: input.value });
-      err.textContent = '';
-      toast(ot('profile.saved'));
-    } catch (e) {
-      err.textContent = e instanceof ProfileError ? ot(e.code as OKey) : String(e);
-    }
-  }
-
-  private async link() {
-    const res = await this.profile!.linkGoogle(
-      () =>
-        new Promise<boolean>((resolve) =>
-          showModal({
-            title: ot('profile.switchT'),
-            body: ot('profile.switchB'),
-            bodyCenter: true,
-            dismissible: false,
-            buttons: [
-              { label: ot('cancel'), onClick: () => resolve(false) },
-              { label: ot('profile.switch'), kind: 'primary', onClick: () => resolve(true) },
-            ],
-          }),
-        ),
-    );
-    if (res.status === 'linked') toast(ot('profile.linked'));
-    else if (res.status === 'switched') toast(ot('profile.switched'));
-    else if (res.status === 'error') toast(ot('profile.linkFail', { msg: res.message }), 3000);
-    this.render();
   }
 
   /** Re-render after a language change. */
@@ -648,12 +548,4 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
       (e) => (clearTimeout(t), rej(e)),
     );
   });
-}
-
-function countryName(cc: string): string {
-  try {
-    return new Intl.DisplayNames([getLang()], { type: 'region' }).of(cc) ?? cc;
-  } catch {
-    return cc;
-  }
 }

@@ -11,6 +11,7 @@ import { isModalOpen, justClosed, showModal, toast } from './ui/modal';
 import type { BoardView } from './view/BoardView';
 import { CanvasView } from './view2d/CanvasView';
 import { OnlineHub } from './online/OnlineHub';
+import { ProfilePage } from './online/ProfilePage';
 
 type Opp = 'bot' | 'two';
 const LEVELS: Level[] = ['easy', 'medium', 'hard'];
@@ -55,6 +56,7 @@ export class App {
   private bot = new BotClient();
   private hintBot = new BotClient();
   readonly hub: OnlineHub;
+  readonly profilePage: ProfilePage;
   /** When set (online match), input / HUD / game-end handling are delegated to it. */
   private mode: ModeController | null = null;
 
@@ -83,6 +85,8 @@ export class App {
     sfx.setEnabled(this.settings.sound);
 
     this.hub = new OnlineHub(this);
+    this.profilePage = new ProfilePage(this.hub, () => this.stats);
+    this.hub.onOpenProfile = () => void this.profilePage.open();
     this.view = new CanvasView($('stage'), this.game);
     this.view.onCellTap = (c) => this.onTap(c);
     this.game.on((e) => this.onGameEvent(e));
@@ -504,6 +508,7 @@ export class App {
     on('bSide', () => this.restartWith(() => (this.settings.human = other(this.settings.human))));
     on('bHelp', () => this.showHelp());
     on('bStats', () => this.showStats());
+    on('bProfile', () => void this.profilePage.open());
     on('bCenter', () => this.view.recenter(true));
     on('bZoomIn', () => this.view.zoomBy(1.3));
     on('bZoomOut', () => this.view.zoomBy(1 / 1.3));
@@ -519,6 +524,7 @@ export class App {
       this.saveSettings();
       this.applyTexts();
       this.hub.refresh();
+      this.profilePage.refresh();
     });
   }
 
@@ -532,6 +538,7 @@ export class App {
     };
     $('logoT').textContent = t('title');
     document.title = getLang() === 'vi' ? 'XO Vô Hạn — Infinite XO' : 'Infinite XO';
+    setBtn('bProfile', icons.user, getLang() === 'vi' ? 'Hồ sơ' : 'Profile', false);
     setBtn('bStats', icons.trophy, t('stats'), false);
     setBtn('bSound', this.settings.sound ? icons.soundOn : icons.soundOff, t('sound'), false);
     setBtn('bHelp', icons.help, t('help'), false);
