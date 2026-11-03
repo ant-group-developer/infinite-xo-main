@@ -1,30 +1,38 @@
 import { sfx } from '../audio';
+import { getLang } from '../i18n';
 import { getBackend, type Backend } from '../net/backend';
 import type { Unsub } from '../net/db';
 import { startPresence } from '../net/presence';
 import { ProfileError, ProfileService } from '../net/profile';
-import { AVATARS, COUNTRIES, avatarOf, flagOf } from '../net/schema';
+import { RoomError, createRoom, findRoomByCode, listPublicRooms, type MemberInfo } from '../net/rooms';
+import { AVATARS, COUNTRIES, avatarOf, flagOf, type RoomIndexEntry } from '../net/schema';
 import { showModal, toast } from '../ui/modal';
-import { getLang } from '../i18n';
+import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
 
 type Tab = 'play' | 'rank' | 'profile';
 
 /**
  * Full-screen online panel layered over the offline game.
- * Owns the backend connection + the signed-in player's profile.
+ * Owns the backend connection, the signed-in player's profile and the
+ * current room (if any).
  */
 export class OnlineHub {
   private el: HTMLElement;
   be: Backend | null = null;
   profile: ProfileService | null = null;
+  room: RoomView | null = null;
+  /** Extra hooks for the room screen (phase 3 adds the match). */
+  roomHooks: Partial<RoomViewHooks> = {};
+
   private tab: Tab = 'play';
   private state: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   private offs: Unsub[] = [];
+  private rooms: { id: string; entry: RoomIndexEntry }[] | null = null;
 
   constructor() {
     this.el = document.getElementById('online')!;
-    this.el.addEventListener('click', (e) => this.onClick(e));
+    this.el.addEventListener('click', (e) => void this.onClick(e));
   }
 
   get isOpen() {
@@ -32,15 +40,31 @@ export class OnlineHub {
   }
 
   async open() {
-    this.el.hidden = false;
-    document.body.classList.add('online-open');
+    this.show();
     if (this.state === 'ready') return this.render();
     await this.connect();
   }
 
-  close() {
+  /** Open straight into a room from an invite link (#/r/CODE). */
+  async openWithCode(code: string) {
+    await this.open();
+    if (this.state === 'ready') await this.joinByCode(code);
+  }
+
+  show() {
+    this.el.hidden = false;
+    document.body.classList.add('online-open');
+  }
+
+  hide() {
     this.el.hidden = true;
     document.body.classList.remove('online-open');
+  }
+
+  close() {
+    if (this.room) return; // must leave the room first
+    this.hide();
+    if (location.hash.startsWith('#/')) history.replaceState(null, '', location.pathname + location.search);
   }
 
   private async connect() {
@@ -51,7 +75,13 @@ export class OnlineHub {
       this.profile = new ProfileService(this.be);
       await withTimeout(this.profile.init(), 15_000);
       this.offs.push(startPresence(this.be.db, this.profile.uid));
-      this.offs.push(this.profile.onChange(() => this.state === 'ready' && this.renderHeader()));
+      this.offs.push(
+        this.profile.onChange(() => {
+          if (this.state !== 'ready') return;
+          this.renderHeader();
+          if (this.room) void this.room.session.updateMe(this.me());
+        }),
+      );
       this.state = 'ready';
     } catch (e) {
       console.error('[online] connect failed', e);
@@ -60,9 +90,110 @@ export class OnlineHub {
     this.render();
   }
 
+  me(): MemberInfo {
+    const p = this.profile!.profile!;
+    return { name: p.name, avatar: p.avatar, country: p.country, rating: this.profile!.stats?.rating ?? 1000 };
+  }
+
+  /* ------------------------------------------------------------- rooms */
+
+  async enterRoom(roomId: string) {
+    const host = document.createElement('div');
+    host.className = 'hub room-host';
+    const view = new RoomView(host, this.be!, this.profile!.uid, roomId, this.me(), {
+      ...this.roomHooks,
+      onExit: (reason) => {
+        this.room = null;
+        if (location.hash.startsWith('#/r/')) history.replaceState(null, '', location.pathname + location.search);
+        this.roomHooks.onExit?.(reason);
+        this.show();
+        this.render();
+        void this.refreshRooms();
+      },
+    });
+    try {
+      await view.open();
+    } catch (e) {
+      toast(e instanceof RoomError ? ot(roomErrKey(e.code)) : ot('connectFail'), 2500);
+      return;
+    }
+    this.room = view;
+    this.el.innerHTML = '';
+    this.el.appendChild(host);
+    const code = view.session.meta?.code;
+    if (code) history.replaceState(null, '', `${location.pathname}${location.search}#/r/${code}`);
+  }
+
+  private async joinByCode(code: string) {
+    const id = await findRoomByCode(this.be!, code);
+    if (!id) return toast(ot('room.notFound'));
+    await this.enterRoom(id);
+  }
+
+  private async refreshRooms() {
+    if (!this.be || this.room) return;
+    try {
+      this.rooms = await listPublicRooms(this.be);
+    } catch (e) {
+      console.warn('[online] list rooms failed', e);
+      this.rooms = [];
+    }
+    if (this.tab === 'play' && !this.room) this.renderBody();
+  }
+
+  private createRoomDialog() {
+    const name = ot('room.defaultName', { name: this.profile!.profile!.name });
+    const m = showModal({
+      title: ot('room.createT'),
+      body: `<label class="fld"><span>${ot('room.name')}</span><input id="crName" maxlength="24" value="${esc(name)}" /></label>
+        <div class="vis-pick">
+          <label><input type="radio" name="vis" value="public" checked /><span><b>🌐 ${ot('room.public')}</b><small>${ot('room.publicSub')}</small></span></label>
+          <label><input type="radio" name="vis" value="private" /><span><b>🔒 ${ot('room.private')}</b><small>${ot('room.privateSub')}</small></span></label>
+        </div>`,
+      buttons: [
+        { label: ot('cancel') },
+        {
+          label: ot('room.create'),
+          kind: 'primary',
+          onClick: () => {
+            const n = (m.querySelector('#crName') as HTMLInputElement).value;
+            const vis = (m.querySelector('input[name=vis]:checked') as HTMLInputElement).value as 'public' | 'private';
+            void (async () => {
+              try {
+                const id = await createRoom(this.be!, this.profile!.uid, this.me(), { name: n || name, visibility: vis });
+                await this.enterRoom(id);
+              } catch (e) {
+                toast(e instanceof RoomError ? ot(roomErrKey(e.code)) : ot('connectFail'));
+              }
+            })();
+          },
+        },
+      ],
+    });
+  }
+
+  private joinDialog() {
+    const m = showModal({
+      title: ot('room.joinT'),
+      body: `<label class="fld"><input id="jnCode" maxlength="6" placeholder="${ot('room.codePh')}" class="code-in" autocomplete="off" spellcheck="false" /></label>`,
+      buttons: [
+        { label: ot('cancel') },
+        {
+          label: ot('room.join'),
+          kind: 'primary',
+          onClick: () => void this.joinByCode((m.querySelector('#jnCode') as HTMLInputElement).value),
+        },
+      ],
+    });
+    const input = m.querySelector<HTMLInputElement>('#jnCode')!;
+    input.focus();
+    input.oninput = () => (input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  }
+
   /* ------------------------------------------------------------ render */
 
   private render() {
+    if (this.room) return; // the room view owns the panel
     if (this.state === 'loading' || this.state === 'idle') {
       this.el.innerHTML = `<div class="hub"><div class="hub-top">${this.backBtn()}</div><div class="hub-center"><div class="spinner"></div><p>${ot('loading')}</p></div></div>`;
       return;
@@ -81,6 +212,7 @@ export class OnlineHub {
     </div>`;
     this.renderHeader();
     this.renderBody();
+    if (this.tab === 'play' && this.rooms === null) void this.refreshRooms();
   }
 
   private backBtn() {
@@ -116,11 +248,29 @@ export class OnlineHub {
         <span class="pc-txt"><b>${ot(title)}</b>${sub ? `<small>${ot(sub)}</small>` : ''}</span>
         ${disabled ? `<span class="soon">${ot('soon')}</span>` : ''}
       </button>`;
+    const list =
+      this.rooms === null
+        ? `<div class="hub-center"><div class="spinner"></div></div>`
+        : this.rooms.length === 0
+          ? `<p class="muted center">${ot('play.noRooms')}</p>`
+          : this.rooms
+              .map(
+                ({ id, entry: r }) => `<button class="room-row" data-act="enter" data-id="${esc(id)}">
+              <span class="rr-main"><b>${esc(r.name)}</b><small>👑 ${esc(r.hostName)}</small></span>
+              <span class="rr-meta"><span>${ot('room.players', { n: r.players })}</span><span>${ot('room.watching', { n: r.spectators })}</span></span>
+              <span class="badge ${r.status}">${ot(r.status === 'playing' ? 'room.statusPlaying' : 'room.statusWaiting')}</span>
+            </button>`,
+              )
+              .join('');
     return `<div class="play-grid">
       ${card('quick', '⚔️', 'play.quick', 'play.quickSub', true)}
-      ${card('create', '🏠', 'play.create', 'play.createSub', true)}
-      ${card('join', '🔑', 'play.join', null, true)}
-    </div>`;
+      <div class="play-row">
+        ${card('create', '🏠', 'play.create', 'play.createSub', false)}
+        ${card('join', '🔑', 'play.join', null, false)}
+      </div>
+    </div>
+    <div class="list-head"><h4>${ot('play.rooms')}</h4><button class="btn sm" data-act="refresh">↻ ${ot('play.refresh')}</button></div>
+    <div class="room-list">${list}</div>`;
   }
 
   private profileTab() {
@@ -160,7 +310,7 @@ export class OnlineHub {
 
   private async onClick(e: MouseEvent) {
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
-    if (!t || (t as HTMLButtonElement).disabled) return;
+    if (!t || (t as HTMLButtonElement).disabled || this.room?.session && t.closest('.room')) return;
     const act = t.dataset.act!;
     sfx.click();
     switch (act) {
@@ -172,6 +322,16 @@ export class OnlineHub {
         this.tab = t.dataset.tab as Tab;
         this.el.querySelectorAll('.hub-tabs button').forEach((b) => b.classList.toggle('on', b === t));
         return this.renderBody();
+      case 'create':
+        return this.createRoomDialog();
+      case 'join':
+        return this.joinDialog();
+      case 'enter':
+        return this.enterRoom(t.dataset.id!);
+      case 'refresh':
+        this.rooms = null;
+        this.renderBody();
+        return this.refreshRooms();
       case 'saveName':
         return this.saveName();
       case 'avatar':
@@ -223,7 +383,7 @@ export class OnlineHub {
 
   /** Re-render after a language change. */
   refresh() {
-    if (this.isOpen) this.render();
+    if (this.isOpen && !this.room) this.render();
   }
 }
 

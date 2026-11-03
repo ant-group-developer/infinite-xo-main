@@ -69,3 +69,57 @@ export function guessCountry(): string {
   }
   return 'VN';
 }
+
+/* ------------------------------------------------------------------ rooms */
+
+export type Side = 'X' | 'O';
+export type RoomType = 'casual' | 'ranked' | 'bot';
+export type RoomStatus = 'waiting' | 'playing' | 'finished';
+
+export interface RoomMeta {
+  hostUid: string;
+  name: string;
+  visibility: 'public' | 'private';
+  code: string;
+  type: RoomType;
+  createdAt: number;
+  lastActive: number;
+  status: RoomStatus;
+}
+
+export interface RoomMember {
+  name: string;
+  avatar: number;
+  country: string;
+  rating: number;
+  joinedAt: number;
+}
+
+export interface Room {
+  meta: RoomMeta;
+  slots?: Partial<Record<Side, string>>;
+  ready?: Partial<Record<Side, boolean>>;
+  members?: Record<string, RoomMember>;
+  kicked?: Record<string, true>;
+}
+
+/** Public lobby listing (small, so the lobby never downloads full rooms). */
+export interface RoomIndexEntry {
+  name: string;
+  hostName: string;
+  players: number;
+  spectators: number;
+  status: RoomStatus;
+  lastActive: number;
+}
+
+export interface ChatMessage {
+  uid: string;
+  name: string;
+  text: string;
+  t: number;
+}
+
+export const MAX_MEMBERS = 32;
+export const ROOM_STALE_MS = 30 * 60 * 1000;
+export const CHAT_MAX = 200;
