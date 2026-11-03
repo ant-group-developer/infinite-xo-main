@@ -1,30 +1,35 @@
-import { makePushKey, segments, type Db, type DisconnectOps, type TxResult, type Unsub } from '../db';
+import { makePushKey, type Db, type DisconnectOps, type TxResult, type Unsub } from '../db';
+import { applyOps, casOk, clone, getAt, segments, type Cas, type Tree, type WriteOp } from './tree';
 
 /**
- * Shared JSON tree behind one or more LocalDb "clients".
+ * The shared data behind one or more LocalDb clients.
  *  - MemoryStore: in-process (unit tests: several clients = several players)
- *  - BrowserStore: localStorage + BroadcastChannel (dev: one client per browser tab)
+ *  - SharedWorkerStore: one SharedWorker "server" for all browser tabs (dev)
  */
 export interface LocalStore {
-  read(): Record<string, unknown>;
-  write(tree: Record<string, unknown>): void;
-  /** Notified after every write by any client. */
+  /** Current tree (a mirror for remote stores). Treat as read-only. */
+  read(): Tree;
+  /** Apply writes atomically; resolves false if the CAS guard failed. */
+  apply(ops: WriteOp[], cas?: Cas): Promise<boolean>;
+  /** Notified after every change, whoever made it. */
   subscribe(fn: () => void): Unsub;
   now(): number;
 }
 
 export class MemoryStore implements LocalStore {
-  private tree: Record<string, unknown> = {};
+  private tree: Tree = {};
   private subs = new Set<() => void>();
-  /** Tests can move time forward. */
+  /** Tests can move the clock forward. */
   clockOffset = 0;
 
   read() {
     return this.tree;
   }
-  write(tree: Record<string, unknown>) {
-    this.tree = tree;
+  async apply(ops: WriteOp[], cas?: Cas) {
+    if (!casOk(this.tree, cas)) return false;
+    this.tree = applyOps(this.tree, ops, this.now());
     for (const fn of [...this.subs]) fn();
+    return true;
   }
   subscribe(fn: () => void): Unsub {
     this.subs.add(fn);
@@ -35,36 +40,69 @@ export class MemoryStore implements LocalStore {
   }
 }
 
-export class BrowserStore implements LocalStore {
-  private key = 'infinite-xo:localdb';
+/** Talks to src/net/local/sharedStore.worker.ts; mirrors its tree locally. */
+export class SharedWorkerStore implements LocalStore {
+  private tree: Tree = {};
   private subs = new Set<() => void>();
-  private chan: BroadcastChannel | null = null;
+  private port: MessagePort;
+  private seq = 0;
+  private pending = new Map<number, (ok: boolean) => void>();
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly ready: Promise<void>;
+  private static KEY = 'infinite-xo:localdb';
 
   constructor() {
-    try {
-      this.chan = new BroadcastChannel('infinite-xo-localdb');
-      this.chan.onmessage = () => this.notify();
-    } catch {
-      /* old browser: fall back to storage events */
-    }
-    window.addEventListener('storage', (e) => {
-      if (e.key === this.key && !this.chan) this.notify();
+    const worker = new SharedWorker(new URL('./sharedStore.worker.ts', import.meta.url), {
+      type: 'module',
+      name: 'infinite-xo-localdb',
     });
-  }
-  private notify() {
-    for (const fn of [...this.subs]) fn();
-  }
-  read() {
+    this.port = worker.port;
+    let resolveReady!: () => void;
+    this.ready = new Promise((r) => (resolveReady = r));
+    this.port.onmessage = (m: MessageEvent) => {
+      const d = m.data;
+      if (d.type === 'tree') {
+        this.tree = d.tree;
+        resolveReady();
+        this.persist();
+        for (const fn of [...this.subs]) fn();
+      } else if (d.type === 'ack') {
+        this.pending.get(d.id)?.(d.ok);
+        this.pending.delete(d.id);
+      }
+    };
+    this.port.start();
+    let saved: Tree | null = null;
     try {
-      return JSON.parse(localStorage.getItem(this.key) || '{}');
+      saved = JSON.parse(localStorage.getItem(SharedWorkerStore.KEY) || 'null');
     } catch {
-      return {};
+      /* ignore */
     }
+    this.port.postMessage({ type: 'hello', saved });
+    window.addEventListener('pagehide', () => this.port.postMessage({ type: 'bye' }));
   }
-  write(tree: Record<string, unknown>) {
-    localStorage.setItem(this.key, JSON.stringify(tree));
-    this.notify();
-    this.chan?.postMessage(1);
+
+  /** Keep a copy so the data survives when every tab is closed. */
+  private persist() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(SharedWorkerStore.KEY, JSON.stringify(this.tree));
+      } catch {
+        /* quota */
+      }
+    }, 300);
+  }
+
+  read() {
+    return this.tree;
+  }
+  apply(ops: WriteOp[], cas?: Cas): Promise<boolean> {
+    const id = ++this.seq;
+    return new Promise((res) => {
+      this.pending.set(id, res);
+      this.port.postMessage({ type: 'apply', id, ops, cas });
+    });
   }
   subscribe(fn: () => void): Unsub {
     this.subs.add(fn);
@@ -73,71 +111,6 @@ export class BrowserStore implements LocalStore {
   now() {
     return Date.now();
   }
-}
-
-/* ------------------------------------------------------------- tree ops */
-
-type Json = unknown;
-const clone = <T>(v: T): T => (v === undefined ? (null as T) : JSON.parse(JSON.stringify(v)));
-
-function getAt(tree: Json, segs: string[]): Json {
-  let cur: Json = tree;
-  for (const s of segs) {
-    if (cur === null || typeof cur !== 'object') return null;
-    cur = (cur as Record<string, Json>)[s];
-    if (cur === undefined) return null;
-  }
-  return cur ?? null;
-}
-
-/** Firebase never stores empty objects or nulls. */
-function normalize(v: Json): Json {
-  if (v === null || v === undefined) return null;
-  if (typeof v !== 'object') return v;
-  if (Array.isArray(v)) v = Object.fromEntries(v.map((x, i) => [String(i), x]));
-  const out: Record<string, Json> = {};
-  for (const [k, x] of Object.entries(v as Record<string, Json>)) {
-    const n = normalize(x);
-    if (n !== null) out[k] = n;
-  }
-  return Object.keys(out).length ? out : null;
-}
-
-function setAt(tree: Record<string, Json>, segs: string[], value: Json): Record<string, Json> {
-  if (!segs.length) return (normalize(value) as Record<string, Json>) ?? {};
-  const root = tree;
-  const stack: [Record<string, Json>, string][] = [];
-  let cur = root;
-  for (let i = 0; i < segs.length - 1; i++) {
-    const s = segs[i];
-    let next = cur[s];
-    if (next === null || typeof next !== 'object') {
-      next = {};
-      cur[s] = next;
-    }
-    stack.push([cur, s]);
-    cur = next as Record<string, Json>;
-  }
-  const last = segs[segs.length - 1];
-  const n = normalize(value);
-  if (n === null) delete cur[last];
-  else cur[last] = n;
-  // prune empty parents
-  for (let i = stack.length - 1; i >= 0; i--) {
-    const [parent, key] = stack[i];
-    const child = parent[key] as Record<string, Json>;
-    if (child && typeof child === 'object' && Object.keys(child).length === 0) delete parent[key];
-  }
-  return root;
-}
-
-function resolveServerValues(v: Json, now: number): Json {
-  if (v === null || typeof v !== 'object') return v;
-  const o = v as Record<string, Json>;
-  if (o['.sv'] === 'timestamp' && Object.keys(o).length === 1) return now;
-  const out: Record<string, Json> = Array.isArray(v) ? ({} as Record<string, Json>) : {};
-  for (const [k, x] of Object.entries(o)) out[k] = resolveServerValues(x, now);
-  return out;
 }
 
 /* ------------------------------------------------------------- LocalDb */
@@ -159,7 +132,7 @@ export class LocalDb implements Db {
   private values = new Set<ValueListener>();
   private children = new Set<ChildListener>();
   private connListeners = new Set<(c: boolean) => void>();
-  private disconnectOps = new Map<string, { kind: 'set' | 'update' | 'remove'; value?: unknown }>();
+  private disconnectOps = new Map<string, WriteOp[]>();
   private connected = true;
   private unsubStore: Unsub;
   private scheduled = false;
@@ -170,45 +143,37 @@ export class LocalDb implements Db {
 
   /* ----- writes */
 
-  private commit(mutator: (tree: Record<string, Json>) => Record<string, Json>) {
-    const tree = (clone(this.store.read()) as Record<string, Json> | null) ?? {};
-    this.store.write(mutator(tree));
-  }
-
   async get<T>(path: string): Promise<T | null> {
     return clone(getAt(this.store.read(), segments(path))) as T | null;
   }
 
   async set(path: string, value: unknown) {
-    const now = this.store.now();
-    this.commit((t) => setAt(t, segments(path), resolveServerValues(clone(value), now)));
+    await this.store.apply([{ path, value }]);
   }
 
   async update(values: Record<string, unknown>) {
-    const now = this.store.now();
-    this.commit((t) => {
-      for (const [p, v] of Object.entries(values)) t = setAt(t, segments(p), resolveServerValues(clone(v), now));
-      return t;
-    });
+    await this.store.apply(Object.entries(values).map(([path, value]) => ({ path, value })));
   }
 
   async remove(path: string) {
-    this.commit((t) => setAt(t, segments(path), null));
+    await this.store.apply([{ path, value: null }]);
   }
 
   pushKey(_path?: string): string {
     return makePushKey(this.store.now());
   }
 
+  /** Optimistic like Firebase: run fn on the latest value, compare-and-set, retry. */
   async transaction<T>(path: string, fn: (cur: T | null) => T | null | undefined): Promise<TxResult<T>> {
     const segs = segments(path);
-    const tree = (clone(this.store.read()) as Record<string, Json> | null) ?? {};
-    const cur = clone(getAt(tree, segs)) as T | null;
-    const next = fn(cur);
-    if (next === undefined) return { committed: false, value: cur };
-    const resolved = resolveServerValues(clone(next), this.store.now()) as T | null;
-    this.store.write(setAt(tree, segs, resolved));
-    return { committed: true, value: resolved };
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const cur = clone(getAt(this.store.read(), segs)) as T | null;
+      const next = fn(clone(cur));
+      if (next === undefined) return { committed: false, value: cur };
+      const ok = await this.store.apply([{ path, value: next }], { path, expect: JSON.stringify(cur) });
+      if (ok) return { committed: true, value: clone(getAt(this.store.read(), segs)) as T | null };
+    }
+    throw new Error('transaction: too many retries');
   }
 
   /* ----- reads / listeners */
@@ -267,7 +232,11 @@ export class LocalDb implements Db {
       const s = JSON.stringify(v);
       if (s === l.last) continue;
       l.last = s;
-      l.cb(clone(v));
+      try {
+        l.cb(clone(v));
+      } catch (e) {
+        console.error('[localdb] listener failed', e);
+      }
     }
     for (const l of [...this.children]) {
       if (!this.children.has(l)) continue;
@@ -276,7 +245,11 @@ export class LocalDb implements Db {
       for (const k of Object.keys(node).sort()) {
         if (l.seen.has(k)) continue;
         l.seen.add(k);
-        l.cb(k, clone(node[k]));
+        try {
+          l.cb(k, clone(node[k]));
+        } catch (e) {
+          console.error('[localdb] listener failed', e);
+        }
       }
     }
   }
@@ -286,9 +259,13 @@ export class LocalDb implements Db {
   onDisconnect(path: string): DisconnectOps {
     const key = segments(path).join('/');
     return {
-      set: async (value) => void this.disconnectOps.set(key, { kind: 'set', value }),
-      update: async (values) => void this.disconnectOps.set(key, { kind: 'update', value: values }),
-      remove: async () => void this.disconnectOps.set(key, { kind: 'remove' }),
+      set: async (value) => void this.disconnectOps.set(key, [{ path: key, value }]),
+      update: async (values) =>
+        void this.disconnectOps.set(
+          key,
+          Object.entries(values).map(([k, v]) => ({ path: `${key}/${k}`, value: v })),
+        ),
+      remove: async () => void this.disconnectOps.set(key, [{ path: key, value: null }]),
       cancel: async () => void this.disconnectOps.delete(key),
     };
   }
@@ -305,21 +282,9 @@ export class LocalDb implements Db {
 
   /** Runs registered onDisconnect operations, like the server would. */
   simulateDisconnect() {
-    const ops = [...this.disconnectOps];
+    const ops = [...this.disconnectOps.values()].flat();
     this.disconnectOps.clear();
-    if (!ops.length) return;
-    const now = this.store.now();
-    this.commit((t) => {
-      for (const [path, op] of ops) {
-        const segs = segments(path);
-        if (op.kind === 'remove') t = setAt(t, segs, null);
-        else if (op.kind === 'set') t = setAt(t, segs, resolveServerValues(clone(op.value), now));
-        else
-          for (const [k, v] of Object.entries(op.value as Record<string, unknown>))
-            t = setAt(t, [...segs, ...segments(k)], resolveServerValues(clone(v), now));
-      }
-      return t;
-    });
+    if (ops.length) void this.store.apply(ops);
   }
 
   goOffline() {

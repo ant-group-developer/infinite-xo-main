@@ -2,6 +2,7 @@ import { sfx } from '../audio';
 import type { Backend } from '../net/backend';
 import { ChatService } from '../net/chat';
 import type { Unsub } from '../net/db';
+import { resignIfPlaying, startMatch } from '../net/match';
 import { RoomError, RoomSession, type MemberInfo } from '../net/rooms';
 import { avatarOf, flagOf, type ChatMessage, type RoomMember, type Side } from '../net/schema';
 import { mark } from '../ui/icons';
@@ -11,8 +12,10 @@ import { esc, ot, type OKey } from './strings';
 export interface RoomViewHooks {
   /** Back to the lobby (after leaving, being kicked or the room closing). */
   onExit(reason: 'left' | 'kicked' | 'closed'): void;
-  /** Extension point for match start (phase 3). */
+  /** Called once the session is joined (the hub watches it to open matches). */
   onSessionReady?(session: RoomSession): void;
+  /** "Watch" pressed while a match is running. */
+  onWatch?(): void;
 }
 
 /** Lobby screen of one room: player slots, spectators, ready state, chat. */
@@ -68,8 +71,21 @@ export class RoomView {
   }
 
   async leave() {
+    await resignIfPlaying(this.be, this.session.id, this.uid).catch(() => false);
     await this.session.leave();
     this.exit('left');
+  }
+
+  private confirmLeave() {
+    const r = this.session.room;
+    if (r?.meta.status === 'playing' && this.session.mySide) {
+      showModal({
+        title: ot('room.leavePlayingT'),
+        body: ot('room.leavePlayingB'),
+        bodyCenter: true,
+        buttons: [{ label: ot('cancel') }, { label: ot('room.leave'), kind: 'danger', onClick: () => void this.leave() }],
+      });
+    } else void this.leave();
   }
 
   dispose() {
@@ -126,18 +142,26 @@ export class RoomView {
     const mySide = s.mySide;
     const bothSeated = !!(r.slots?.X && r.slots?.O);
     const bothReady = !!(r.ready?.X && r.ready?.O);
-    this.q('#rmStatus').textContent = !bothSeated
-      ? ot('room.waitPlayers')
-      : !bothReady
-        ? ot('room.waitReady')
-        : ot('room.waitHost');
+    const playing = r.meta.status === 'playing';
+    this.q('#rmStatus').textContent = playing
+      ? '🔴 ' + ot('room.playing')
+      : !bothSeated
+        ? ot('room.waitPlayers')
+        : !bothReady
+          ? ot('room.waitReady')
+          : ot('room.waitHost');
 
     const acts: string[] = [];
+    if (playing) {
+      this.q('#rmActions').innerHTML = `<button class="btn primary" data-act="watch">▶ ${ot('room.watch')}</button>`;
+      return;
+    }
     if (mySide) {
       const ready = !!r.ready?.[mySide];
       acts.push(`<button class="btn ${ready ? '' : 'primary'}" data-act="ready">${ready ? '✓ ' + ot('room.ready') : ot('room.ready')}</button>`);
       acts.push(`<button class="btn" data-act="spectate">👁 ${ot('room.spectate')}</button>`);
     }
+    if (s.isHost && bothSeated) acts.push(`<button class="btn" data-act="swap">⇄ ${ot('room.swap')}</button>`);
     if (s.isHost) acts.push(`<button class="btn primary" data-act="start" ${bothSeated && bothReady ? '' : 'disabled'}>▶ ${ot('room.start')}</button>`);
     this.q('#rmActions').innerHTML = acts.join('');
   }
@@ -229,7 +253,7 @@ export class RoomView {
     try {
       switch (t.dataset.act) {
         case 'leave':
-          return await this.leave();
+          return this.confirmLeave();
         case 'copy':
           return await this.copyLink();
         case 'sit':
@@ -256,8 +280,12 @@ export class RoomView {
           return;
         }
         case 'start':
-          // Phase 3 wires the match start.
+          if (s.room) await startMatch(this.be, s.id, s.room);
           return;
+        case 'swap':
+          return await s.swapSides();
+        case 'watch':
+          return this.hooks.onWatch?.();
       }
     } catch (err) {
       if (err instanceof RoomError) toast(ot(roomErrKey(err.code)));

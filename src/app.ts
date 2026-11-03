@@ -3,6 +3,7 @@ import { evaluate, type Level } from './ai/bot';
 import { sfx } from './audio';
 import { Game, type GameEvent } from './core/game';
 import { other, type Cell, type Player } from './core/types';
+import type { ModeController } from './online/mode';
 import { getLang, setLang, t, type Lang, type TKey } from './i18n';
 import { load, save } from './storage';
 import { icons, mark } from './ui/icons';
@@ -53,7 +54,9 @@ export class App {
   private view: BoardView;
   private bot = new BotClient();
   private hintBot = new BotClient();
-  readonly hub = new OnlineHub();
+  readonly hub: OnlineHub;
+  /** When set (online match), input / HUD / game-end handling are delegated to it. */
+  private mode: ModeController | null = null;
 
   private settings: Settings = load<Settings>('settings', {
     opp: 'bot',
@@ -79,6 +82,7 @@ export class App {
     setLang(this.settings.lang);
     sfx.setEnabled(this.settings.sound);
 
+    this.hub = new OnlineHub(this);
     this.view = new CanvasView($('stage'), this.game);
     this.view.onCellTap = (c) => this.onTap(c);
     this.game.on((e) => this.onGameEvent(e));
@@ -96,6 +100,39 @@ export class App {
       this.saveSettings();
       setTimeout(() => this.showHelp(), 300);
     }
+  }
+
+  /* ------------------------------------------------- online mode hooks */
+
+  /** Hand input/HUD to an online controller (null = back to the offline game). */
+  setMode(mode: ModeController | null) {
+    this.mode = mode;
+    if (mode) {
+      clearTimeout(this.resultTimer);
+      this.epoch++;
+      this.bot.cancel();
+      this.hintBot.cancel();
+      this.thinking = false;
+      this.hintBusy = false;
+      document.body.classList.add('online-match');
+    } else {
+      document.body.classList.remove('online-match');
+      this.applyTexts();
+      this.startGame();
+    }
+    this.render();
+  }
+
+  recenter() {
+    this.view.recenter(true);
+  }
+
+  showHint(cell: Cell | null) {
+    this.view.showHint(cell);
+  }
+
+  reject(cell: Cell) {
+    this.view.reject(cell);
   }
 
   /* ---------------------------------------------------------- helpers */
@@ -155,6 +192,7 @@ export class App {
 
   private onTap(c: Cell) {
     if (isModalOpen() || justClosed()) return;
+    if (this.mode) return this.mode.onTap(c);
     const g = this.game;
     if (g.isOver) return;
     if (this.isBot && (this.thinking || g.turn !== this.gameHuman)) {
@@ -174,6 +212,7 @@ export class App {
   }
 
   private async maybeBotMove() {
+    if (this.mode) return;
     const g = this.game;
     if (!this.isBot || g.isOver || g.turn === this.gameHuman) return;
     const epoch = this.epoch;
@@ -199,6 +238,12 @@ export class App {
   }
 
   private onGameEvent(e: GameEvent) {
+    if (this.mode) {
+      if (e.type === 'move') sfx.place(e.move.p);
+      this.mode.onGameEvent(e);
+      this.render();
+      return;
+    }
     switch (e.type) {
       case 'move':
         sfx.place(e.move.p);
@@ -443,11 +488,13 @@ export class App {
         sfx.click();
         fn();
       });
-    on('bUndo', () => this.undo());
-    on('bHint', () => void this.hint());
-    on('bResign', () => this.resign());
-    on('bDraw', () => this.offerDraw());
-    on('bNew', () => this.restartWith(() => {}));
+    const act = (a: 'undo' | 'hint' | 'resign' | 'draw' | 'new', local: () => void) => () =>
+      this.mode ? this.mode.onAction(a) : local();
+    on('bUndo', act('undo', () => this.undo()));
+    on('bHint', act('hint', () => void this.hint()));
+    on('bResign', act('resign', () => this.resign()));
+    on('bDraw', act('draw', () => this.offerDraw()));
+    on('bNew', act('new', () => this.restartWith(() => {})));
     on('bSide', () => this.restartWith(() => (this.settings.human = other(this.settings.human))));
     on('bHelp', () => this.showHelp());
     on('bStats', () => this.showStats());
@@ -543,6 +590,11 @@ export class App {
 
   render() {
     const g = this.game;
+    if (this.mode) {
+      this.mode.renderHud();
+      this.view.setInteractive(this.mode.interactivePlayer());
+      return;
+    }
     this.renderSegs();
 
     // score cards

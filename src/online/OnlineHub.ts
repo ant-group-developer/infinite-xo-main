@@ -7,6 +7,8 @@ import { ProfileError, ProfileService } from '../net/profile';
 import { RoomError, createRoom, findRoomByCode, listPublicRooms, type MemberInfo } from '../net/rooms';
 import { AVATARS, COUNTRIES, avatarOf, flagOf, type RoomIndexEntry } from '../net/schema';
 import { showModal, toast } from '../ui/modal';
+import { MatchScreen } from './MatchScreen';
+import type { MatchHost } from './mode';
 import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
 
@@ -22,6 +24,7 @@ export class OnlineHub {
   be: Backend | null = null;
   profile: ProfileService | null = null;
   room: RoomView | null = null;
+  match: MatchScreen | null = null;
   /** Extra hooks for the room screen (phase 3 adds the match). */
   roomHooks: Partial<RoomViewHooks> = {};
 
@@ -30,7 +33,7 @@ export class OnlineHub {
   private offs: Unsub[] = [];
   private rooms: { id: string; entry: RoomIndexEntry }[] | null = null;
 
-  constructor() {
+  constructor(private host: MatchHost) {
     this.el = document.getElementById('online')!;
     this.el.addEventListener('click', (e) => void this.onClick(e));
   }
@@ -100,9 +103,23 @@ export class OnlineHub {
   async enterRoom(roomId: string) {
     const host = document.createElement('div');
     host.className = 'hub room-host';
+    let lastStatus: string | null = null;
     const view = new RoomView(host, this.be!, this.profile!.uid, roomId, this.me(), {
       ...this.roomHooks,
+      onWatch: () => this.openMatch(),
+      onSessionReady: (session) => {
+        lastStatus = session.meta?.status ?? null;
+        session.on((e) => {
+          if (e.type !== 'change') return;
+          const st = e.room.meta.status;
+          // A new game just started: everyone in the room goes to the board.
+          if (st === 'playing' && lastStatus !== 'playing' && !this.match) this.openMatch();
+          lastStatus = st;
+        });
+        this.roomHooks.onSessionReady?.(session);
+      },
       onExit: (reason) => {
+        this.closeMatch(false);
         this.room = null;
         if (location.hash.startsWith('#/r/')) history.replaceState(null, '', location.pathname + location.search);
         this.roomHooks.onExit?.(reason);
@@ -122,6 +139,25 @@ export class OnlineHub {
     this.el.appendChild(host);
     const code = view.session.meta?.code;
     if (code) history.replaceState(null, '', `${location.pathname}${location.search}#/r/${code}`);
+  }
+
+  openMatch() {
+    const room = this.room;
+    if (!room || this.match) return;
+    const s = room.session;
+    this.match = new MatchScreen(this.host, this.be!, this.profile!.uid, s.id, s.meta?.name ?? '', () => this.me().name, {
+      onBackToRoom: () => this.closeMatch(true),
+    });
+    this.hide();
+    this.match.enter();
+  }
+
+  /** Leave the match screen; `toRoom` shows the room panel again. */
+  closeMatch(toRoom: boolean) {
+    if (!this.match) return;
+    this.match.exit();
+    this.match = null;
+    if (toRoom && this.room) this.show();
   }
 
   private async joinByCode(code: string) {

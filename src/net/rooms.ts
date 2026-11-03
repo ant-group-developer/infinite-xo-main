@@ -127,6 +127,8 @@ export class RoomSession {
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private lastIndex = '';
   private ended = false;
+  /** Result of the current game (watched so the host can close the match). */
+  private gameResult: unknown = null;
 
   constructor(
     private be: Backend,
@@ -210,6 +212,12 @@ export class RoomSession {
         void this.duties();
       }),
     );
+    this.offs.push(
+      db.onValue(`games/${this.id}/result`, (res) => {
+        this.gameResult = res;
+        void this.duties();
+      }),
+    );
     this.heartbeat = setInterval(() => void this.touch(), 60_000);
   }
 
@@ -262,6 +270,19 @@ export class RoomSession {
   }
 
   /* ----- host actions */
+
+  /** Swap who plays X and O (between games). */
+  async swapSides() {
+    const r = this.room;
+    if (!this.isHost) throw new RoomError('not-host');
+    if (!r || r.meta.status === 'playing' || !r.slots?.X || !r.slots?.O) return;
+    await this.be.db.update({
+      [`rooms/${this.id}/slots/X`]: r.slots.O,
+      [`rooms/${this.id}/slots/O`]: r.slots.X,
+      [`rooms/${this.id}/ready/X`]: null,
+      [`rooms/${this.id}/ready/O`]: null,
+    });
+  }
 
   async kick(target: string) {
     if (!this.isHost) throw new RoomError('not-host');
@@ -339,6 +360,10 @@ export class RoomSession {
     }
     if (!this.isHost) return;
 
+    if (r.meta.status === 'playing' && this.gameResult) {
+      await db.update({ [`rooms/${this.id}/meta/status`]: 'finished', [`rooms/${this.id}/meta/lastActive`]: SERVER_TS });
+      return;
+    }
     if (r.meta.status === 'finished' && !(r.slots?.X && r.slots?.O)) {
       await db.update({ [`rooms/${this.id}/meta/status`]: 'waiting', [`rooms/${this.id}/meta/lastActive`]: SERVER_TS });
     }

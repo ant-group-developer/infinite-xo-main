@@ -160,7 +160,7 @@
         },
         "slots": {
           "$side": {
-            ".write": "auth != null && root.child('rooms/' + $rid + '/meta/status').val() !== 'playing' && ((newData.val() === auth.uid && (!data.exists() || data.val() === auth.uid) && newData.parent().parent().child('members/' + auth.uid).exists()) || (!newData.exists() && (data.val() === auth.uid || root.child('rooms/' + $rid + '/meta/hostUid').val() === auth.uid)))",
+            ".write": "auth != null && root.child('rooms/' + $rid + '/meta/status').val() !== 'playing' && ((newData.val() === auth.uid && (!data.exists() || data.val() === auth.uid) && newData.parent().parent().child('members/' + auth.uid).exists()) || (!newData.exists() && (data.val() === auth.uid || root.child('rooms/' + $rid + '/meta/hostUid').val() === auth.uid)) || (root.child('rooms/' + $rid + '/meta/hostUid').val() === auth.uid && newData.val() === root.child('rooms/' + $rid + '/slots/' + ($side === 'X' ? 'O' : 'X')).val()))",
             ".validate": "($side === 'X' || $side === 'O') && newData.isString()"
           }
         },
@@ -235,6 +235,98 @@
           "$other": {
             ".validate": false
           }
+        }
+      }
+    },
+    "games": {
+      "$rid": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((newData.exists() && root.child('rooms/' + $rid + '/meta/hostUid').val() === auth.uid && newData.child('n').val() === 0 && !newData.child('moves').exists() && !newData.child('board').exists() && !newData.child('result').exists() && !newData.child('drawOffer').exists() && newData.child('turn').val() === 'X' && newData.child('seq').val() === (data.exists() ? data.child('seq').val() + 1 : 1) && newData.child('players/X/uid').val() === root.child('rooms/' + $rid + '/slots/X').val() && newData.child('players/O/uid').val() === root.child('rooms/' + $rid + '/slots/O').val()) || (!newData.exists() && (root.child('rooms/' + $rid + '/meta/hostUid').val() === auth.uid || !root.child('rooms/' + $rid + '/meta').exists() || root.child('rooms/' + $rid + '/meta/lastActive').val() < now - 1800000)))",
+        ".validate": "newData.hasChildren(['seq', 'type', 'players', 'startedAt', 'n', 'turn', 'turnStart'])",
+        "seq": {
+          ".validate": "newData.isNumber()"
+        },
+        "type": {
+          ".validate": "newData.val() === 'casual' || newData.val() === 'ranked' || newData.val() === 'bot'"
+        },
+        "players": {
+          "$side": {
+            ".validate": "($side === 'X' || $side === 'O') && newData.hasChildren(['uid', 'name', 'avatar', 'country', 'rating'])",
+            "uid": {
+              ".validate": "newData.isString()"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "avatar": {
+              ".validate": "newData.isNumber()"
+            },
+            "country": {
+              ".validate": "newData.isString() && newData.val().length === 2"
+            },
+            "rating": {
+              ".validate": "newData.isNumber()"
+            },
+            "bot": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "startedAt": {
+          ".validate": "newData.val() === now || newData.val() === data.val()"
+        },
+        "n": {
+          ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && root.child('games/' + $rid + '/players/' + root.child('games/' + $rid + '/turn').val() + '/uid').val() === auth.uid && now <= root.child('games/' + $rid + '/turnStart').val() + 123000",
+          ".validate": "newData.isNumber() && (!data.exists() ? newData.val() === 0 : (newData.val() === data.val() + 1 && newData.parent().child('moves/' + data.val()).exists()))"
+        },
+        "turn": {
+          ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && root.child('games/' + $rid + '/players/' + root.child('games/' + $rid + '/turn').val() + '/uid').val() === auth.uid && now <= root.child('games/' + $rid + '/turnStart').val() + 123000",
+          ".validate": "(newData.val() === 'X' || newData.val() === 'O') && (!data.exists() ? newData.val() === 'X' : (newData.val() !== data.val() && newData.parent().child('n').val() === data.parent().child('n').val() + 1))"
+        },
+        "turnStart": {
+          ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && root.child('games/' + $rid + '/players/' + root.child('games/' + $rid + '/turn').val() + '/uid').val() === auth.uid && now <= root.child('games/' + $rid + '/turnStart').val() + 123000",
+          ".validate": "newData.val() === now"
+        },
+        "moves": {
+          "$i": {
+            ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && root.child('games/' + $rid + '/players/' + root.child('games/' + $rid + '/turn').val() + '/uid').val() === auth.uid && now <= root.child('games/' + $rid + '/turnStart').val() + 123000",
+            ".validate": "!data.exists() && newData.hasChildren(['x', 'y', 'p', 't']) && newData.child('x').isNumber() && newData.child('y').isNumber() && newData.child('p').val() === data.parent().parent().child('turn').val() && newData.child('t').val() === now && !data.parent().parent().child('board/' + newData.child('x').val() + '_' + newData.child('y').val()).exists() && newData.parent().parent().child('board/' + newData.child('x').val() + '_' + newData.child('y').val()).val() === newData.child('p').val() && newData.parent().parent().child('n').val() === data.parent().parent().child('n').val() + 1"
+          }
+        },
+        "board": {
+          "$cell": {
+            ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && root.child('games/' + $rid + '/players/' + root.child('games/' + $rid + '/turn').val() + '/uid').val() === auth.uid && now <= root.child('games/' + $rid + '/turnStart').val() + 123000",
+            ".validate": "!data.exists() && newData.val() === data.parent().parent().child('turn').val() && newData.parent().parent().child('n').val() === data.parent().parent().child('n').val() + 1"
+          }
+        },
+        "drawOffer": {
+          ".write": "auth != null && !root.child('games/' + $rid + '/result').exists() && (newData.exists() ? root.child('games/' + $rid + '/players/' + newData.val() + '/uid').val() === auth.uid : (root.child('games/' + $rid + '/players/X/uid').val() === auth.uid || root.child('games/' + $rid + '/players/O/uid').val() === auth.uid))",
+          ".validate": "newData.val() === 'X' || newData.val() === 'O'"
+        },
+        "result": {
+          ".write": "auth != null && !data.exists()",
+          ".validate": "newData.hasChildren(['reason', 'at']) && newData.child('at').val() === now && ((newData.child('reason').val() === 'five' && newData.child('winner').val() === data.parent().child('turn').val() && ((newData.child('line/dx').val() === 1 && (newData.child('line/dy').val() === 0 || newData.child('line/dy').val() === 1 || newData.child('line/dy').val() === -1)) || (newData.child('line/dx').val() === 0 && newData.child('line/dy').val() === 1)) && newData.child('line/len').val() >= 5 && newData.child('line/len').val() <= 9 && newData.parent().child('board/' + (newData.child('line/sx').val() + (0) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (0) * newData.child('line/dy').val())).val() === newData.child('winner').val() && newData.parent().child('board/' + (newData.child('line/sx').val() + (1) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (1) * newData.child('line/dy').val())).val() === newData.child('winner').val() && newData.parent().child('board/' + (newData.child('line/sx').val() + (2) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (2) * newData.child('line/dy').val())).val() === newData.child('winner').val() && newData.parent().child('board/' + (newData.child('line/sx').val() + (3) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (3) * newData.child('line/dy').val())).val() === newData.child('winner').val() && newData.parent().child('board/' + (newData.child('line/sx').val() + (4) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (4) * newData.child('line/dy').val())).val() === newData.child('winner').val() && (newData.child('line/len').val() <= 5 || newData.parent().child('board/' + (newData.child('line/sx').val() + (5) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (5) * newData.child('line/dy').val())).val() === newData.child('winner').val()) && (newData.child('line/len').val() <= 6 || newData.parent().child('board/' + (newData.child('line/sx').val() + (6) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (6) * newData.child('line/dy').val())).val() === newData.child('winner').val()) && (newData.child('line/len').val() <= 7 || newData.parent().child('board/' + (newData.child('line/sx').val() + (7) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (7) * newData.child('line/dy').val())).val() === newData.child('winner').val()) && (newData.child('line/len').val() <= 8 || newData.parent().child('board/' + (newData.child('line/sx').val() + (8) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (8) * newData.child('line/dy').val())).val() === newData.child('winner').val()) && newData.parent().child('board/' + (newData.child('line/sx').val() + (-1) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (-1) * newData.child('line/dy').val())).val() !== newData.child('winner').val() && newData.parent().child('board/' + (newData.child('line/sx').val() + newData.child('line/len').val() * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + newData.child('line/len').val() * newData.child('line/dy').val())).val() !== newData.child('winner').val() && !(newData.parent().child('board/' + (newData.child('line/sx').val() + (-1) * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + (-1) * newData.child('line/dy').val())).val() === (newData.child('winner').val() === 'X' ? 'O' : 'X') && newData.parent().child('board/' + (newData.child('line/sx').val() + newData.child('line/len').val() * newData.child('line/dx').val()) + '_' + (newData.child('line/sy').val() + newData.child('line/len').val() * newData.child('line/dy').val())).val() === (newData.child('winner').val() === 'X' ? 'O' : 'X'))) || (newData.child('reason').val() === 'timeout' && now > data.parent().child('turnStart').val() + 120000 && newData.child('winner').val() !== data.parent().child('turn').val() && (newData.child('winner').val() === 'X' || newData.child('winner').val() === 'O')) || ((newData.child('reason').val() === 'resign' || newData.child('reason').val() === 'abandon') && (newData.child('winner').val() === 'X' || newData.child('winner').val() === 'O') && data.parent().child('players/' + (newData.child('winner').val() === 'X' ? 'O' : 'X') + '/uid').val() === auth.uid) || (newData.child('reason').val() === 'draw' && !newData.child('winner').exists() && data.parent().child('drawOffer').exists() && data.parent().child('players/' + (data.parent().child('drawOffer').val() === 'X' ? 'O' : 'X') + '/uid').val() === auth.uid))",
+          "winner": {
+            ".validate": "newData.val() === 'X' || newData.val() === 'O'"
+          },
+          "reason": {
+            ".validate": "newData.isString()"
+          },
+          "line": {
+            ".validate": "newData.hasChildren(['sx', 'sy', 'dx', 'dy', 'len'])"
+          },
+          "at": {
+            ".validate": "newData.val() === now"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
         }
       }
     }

@@ -122,6 +122,15 @@ export class Game {
     return true;
   }
 
+  /** End as a draw without the offer/answer handshake (result decided elsewhere, e.g. a server). */
+  declareDraw(): boolean {
+    if (this.isOver) return false;
+    this.drawOfferFrom = null;
+    this.status = 'draw';
+    this.emit({ type: 'draw' });
+    return true;
+  }
+
   offerDraw(from: Player): boolean {
     if (this.isOver || this.drawOfferFrom) return false;
     this.drawOfferFrom = from;

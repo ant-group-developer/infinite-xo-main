@@ -44,8 +44,22 @@ export function getBackend(): Promise<Backend> {
       const app = initializeApp(cfg);
       return { mode: 'firebase', db: new FirebaseDb(app, cfg.databaseURL), auth: new FirebaseAuthService(app) };
     }
-    const [{ LocalDb, BrowserStore }, { LocalAuth }] = await Promise.all([import('./local/localDb'), import('./auth')]);
-    return { mode: 'local', db: new LocalDb(new BrowserStore()), auth: new LocalAuth() };
+    const [{ LocalDb, SharedWorkerStore, MemoryStore }, { LocalAuth }] = await Promise.all([
+      import('./local/localDb'),
+      import('./auth'),
+    ]);
+    let store: import('./local/localDb').LocalStore;
+    if (typeof SharedWorker !== 'undefined') {
+      const sw = new SharedWorkerStore();
+      await sw.ready;
+      store = sw;
+    } else {
+      store = new MemoryStore(); // e.g. Android Chrome: single-tab only
+    }
+    const db = new LocalDb(store);
+    // Closing the tab = disconnecting: run onDisconnect ops like the server would.
+    window.addEventListener('pagehide', () => db.simulateDisconnect());
+    return { mode: 'local', db, auth: new LocalAuth() };
   })();
   return backend;
 }
