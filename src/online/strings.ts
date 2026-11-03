@@ -149,6 +149,16 @@ const vi = {
   'm.delta': "Điểm: {before} → {after} ({delta})",
   'm.promoted': "Thăng hạng: {tier}!",
   'm.ratedSoon': "Đang cập nhật điểm…",
+  'mm.title': "Đang tìm đối thủ…",
+  'mm.window': "Phạm vi điểm ±{n}",
+  'mm.any': "Mọi trình độ",
+  'mm.cancel': "Hủy tìm",
+  'mm.found': "Đã tìm thấy đối thủ!",
+  'mm.fail': "Không ghép được trận, thử lại nhé",
+  'mm.tip': "Mẹo: chặn sớm các chuỗi 3 quân hở hai đầu!",
+  'm.leave': "Rời trận",
+  'm.lobby': "Về sảnh",
+  'm.again': "Tìm trận mới",
 } as const;
 
 type Key = keyof typeof vi;
@@ -302,6 +312,16 @@ const en: Record<Key, string> = {
   'm.delta': "Rating: {before} → {after} ({delta})",
   'm.promoted': "Promoted: {tier}!",
   'm.ratedSoon': "Updating rating…",
+  'mm.title': "Finding an opponent…",
+  'mm.window': "Rating range ±{n}",
+  'mm.any': "Any skill level",
+  'mm.cancel': "Cancel",
+  'mm.found': "Opponent found!",
+  'mm.fail': "Could not start the match, please retry",
+  'mm.tip': "Tip: block open threes early!",
+  'm.leave': "Leave match",
+  'm.lobby': "Back to lobby",
+  'm.again': "Find new match",
 };
 
 export type OKey = Key;

@@ -13,10 +13,13 @@ import { esc, ot } from './strings';
 import { tierOf } from '../core/elo';
 import { applyRatedResult } from '../net/rating';
 import { tierBadge, tierName } from './tierBadge';
+import { BotDriver } from './BotDriver';
 
 export interface MatchScreenHooks {
   /** Player pressed "Room" / "Back to room". */
   onBackToRoom(): void;
+  /** Ranked / bot matches: queue again. */
+  onPlayAgain?(): void;
 }
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -35,6 +38,7 @@ export class MatchScreen implements ModeController {
   private lastHurry = 0;
   private resultShown = -1;
   private enteredAt = 0;
+  private botDriver: BotDriver | null = null;
 
   constructor(
     private host: MatchHost,
@@ -66,6 +70,12 @@ export class MatchScreen implements ModeController {
       }),
       this.chat.subscribe((_, m) => this.addChat(m)),
     );
+    this.offs.push(
+      this.sync.on((e) => {
+        // The human host plays the persona's moves in matchmaking bot games.
+        if (e.type === 'start' && e.doc.type === 'bot' && !this.botDriver) this.botDriver = new BotDriver(this.sync);
+      }),
+    );
     this.sync.start();
     this.ticker = setInterval(() => this.tick(), 250);
     this.host.render();
@@ -75,6 +85,8 @@ export class MatchScreen implements ModeController {
     clearInterval(this.ticker);
     for (const off of this.offs) off();
     this.offs = [];
+    this.botDriver?.dispose();
+    this.botDriver = null;
     this.sync.dispose();
     this.drawer.remove();
     if (isModalOpen()) closeModal();
@@ -103,6 +115,18 @@ export class MatchScreen implements ModeController {
   }
 
   onAction(a: 'undo' | 'hint' | 'resign' | 'draw' | 'new') {
+    const d = this.sync.doc;
+    const ranked = !!d && d.type !== 'casual';
+    if (a === 'new' && ranked) return this.hooks.onPlayAgain?.();
+    if (a === 'undo' && ranked && d && !d.result && this.sync.mySide) {
+      showModal({
+        title: ot('m.leave') + '?',
+        body: ot('room.leavePlayingB'),
+        bodyCenter: true,
+        buttons: [{ label: ot('cancel') }, { label: ot('m.leave'), kind: 'danger', onClick: () => this.hooks.onBackToRoom() }],
+      });
+      return;
+    }
     if (a === 'undo' || a === 'new') return this.hooks.onBackToRoom();
     if (a === 'hint') return this.toggleChat();
     if (a === 'resign') {
@@ -152,7 +176,8 @@ export class MatchScreen implements ModeController {
       el.innerHTML = `${icon}<span>${esc(label)}</span>`;
       el.title = label;
     };
-    setBtn('bUndo', icons.undo, ot('m.room'));
+    const ranked = !!d && d.type !== 'casual';
+    setBtn('bUndo', icons.undo, ranked ? (d?.result ? ot('m.lobby') : ot('m.leave')) : ot('m.room'));
     setBtn('bHint', '💬', ot('m.chat') + (this.unread ? ` (${this.unread})` : ''));
     ($('bUndo') as HTMLButtonElement).disabled = false;
     ($('bHint') as HTMLButtonElement).disabled = false;
@@ -163,7 +188,7 @@ export class MatchScreen implements ModeController {
     $('bDraw').style.display = mine ? '' : 'none';
     const bNew = $('bNew');
     bNew.style.display = d?.result ? '' : 'none';
-    bNew.innerHTML = `${icons.refresh}<span>${ot('m.rematch')}</span>`;
+    bNew.innerHTML = `${icons.refresh}<span>${ranked ? ot('m.again') : ot('m.rematch')}</span>`;
   }
 
   /* ------------------------------------------------------------- clock */
@@ -247,7 +272,9 @@ export class MatchScreen implements ModeController {
         body: `<div class="big">${r.winner ? mark(r.winner) : mark('X') + mark('O')}</div><p>${esc(reason)}</p>${extra}`,
         buttons: [
           { label: ot('m.view') },
-          { label: ot('m.rematch'), kind: 'primary', onClick: () => this.hooks.onBackToRoom() },
+          d.type === 'casual'
+            ? { label: ot('m.rematch'), kind: 'primary', onClick: () => this.hooks.onBackToRoom() }
+            : { label: '⚔ ' + ot('m.again'), kind: 'primary', onClick: () => this.hooks.onPlayAgain?.() },
         ],
       });
     });

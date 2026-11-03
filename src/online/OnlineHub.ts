@@ -8,6 +8,7 @@ import { RoomError, createRoom, findRoomByCode, listPublicRooms, type MemberInfo
 import { AVATARS, COUNTRIES, avatarOf, flagOf, type RoomIndexEntry } from '../net/schema';
 import { showModal, toast } from '../ui/modal';
 import { MatchScreen } from './MatchScreen';
+import { Matchmaker } from '../net/matchmaking';
 import type { MatchHost } from './mode';
 import { RoomView, roomErrKey, type RoomViewHooks } from './RoomView';
 import { esc, ot, type OKey } from './strings';
@@ -72,7 +73,7 @@ export class OnlineHub {
   }
 
   close() {
-    if (this.room) return; // must leave the room first
+    if (this.room || this.mm) return; // must leave the room / cancel the search first
     this.hide();
     if (location.hash.startsWith('#/')) history.replaceState(null, '', location.pathname + location.search);
   }
@@ -107,7 +108,11 @@ export class OnlineHub {
 
   /* ------------------------------------------------------------- rooms */
 
-  async enterRoom(roomId: string) {
+  /**
+   * Join a room. `silent` (matchmaking rooms) keeps the room panel hidden: the
+   * player goes straight to the board and back to the lobby afterwards.
+   */
+  async enterRoom(roomId: string, opts: { silent?: boolean } = {}) {
     const host = document.createElement('div');
     host.className = 'hub room-host';
     let lastStatus: string | null = null;
@@ -116,6 +121,7 @@ export class OnlineHub {
       onWatch: () => this.openMatch(),
       onSessionReady: (session) => {
         lastStatus = session.meta?.status ?? null;
+        if (opts.silent && lastStatus === 'playing') queueMicrotask(() => this.openMatch());
         session.on((e) => {
           if (e.type !== 'change') return;
           const st = e.room.meta.status;
@@ -128,6 +134,7 @@ export class OnlineHub {
       onExit: (reason) => {
         this.closeMatch(false);
         this.room = null;
+        this.roomSilent = false;
         if (location.hash.startsWith('#/r/')) history.replaceState(null, '', location.pathname + location.search);
         this.roomHooks.onExit?.(reason);
         this.show();
@@ -142,6 +149,8 @@ export class OnlineHub {
       return;
     }
     this.room = view;
+    this.roomSilent = !!opts.silent;
+    if (opts.silent) return;
     this.el.innerHTML = '';
     this.el.appendChild(host);
     const code = view.session.meta?.code;
@@ -154,17 +163,88 @@ export class OnlineHub {
     const s = room.session;
     this.match = new MatchScreen(this.host, this.be!, this.profile!.uid, s.id, s.meta?.name ?? '', () => this.me().name, {
       onBackToRoom: () => this.closeMatch(true),
+      onPlayAgain: () => void this.playAgain(),
     });
     this.hide();
     this.match.enter();
   }
 
-  /** Leave the match screen; `toRoom` shows the room panel again. */
+  /** Leave the match screen; `toRoom` shows the room panel again (matchmaking rooms: lobby). */
   closeMatch(toRoom: boolean) {
     if (!this.match) return;
     this.match.exit();
     this.match = null;
+    if (toRoom && this.room && this.roomSilent) {
+      void this.room.leave(); // abandons a running game; onExit shows the lobby
+      return;
+    }
     if (toRoom && this.room) this.show();
+  }
+
+  /* ------------------------------------------------------- matchmaking */
+
+  private roomSilent = false;
+  private mm: Matchmaker | null = null;
+  private mmInfo = { elapsed: 0, window: 100 };
+
+  async startSearch() {
+    if (!this.be || this.room || this.mm) return;
+    const mm = new Matchmaker(this.be, this.profile!.uid, this.me());
+    this.mm = mm;
+    this.mmInfo = { elapsed: 0, window: 100 };
+    mm.on((e) => {
+      if (this.mm !== mm) return;
+      if (e.type === 'searching') {
+        this.mmInfo = { elapsed: e.elapsed, window: e.window };
+        this.renderSearch();
+      } else if (e.type === 'matched') {
+        this.mm = null;
+        this.renderSearch(true);
+        void this.enterRoom(e.roomId, { silent: true }).then(() => {
+          if (e.host && this.room) this.openMatch();
+        });
+      } else if (e.type === 'error') {
+        console.error('[mm]', e.error);
+        toast(ot('mm.fail'));
+        void this.cancelSearch();
+      }
+    });
+    this.renderSearch();
+    try {
+      await mm.start();
+    } catch (err) {
+      console.error('[mm] start failed', err);
+      toast(ot('mm.fail'));
+      await this.cancelSearch();
+    }
+  }
+
+  async cancelSearch() {
+    const mm = this.mm;
+    this.mm = null;
+    await mm?.cancel();
+    this.render();
+  }
+
+  private async playAgain() {
+    this.closeMatch(false);
+    if (this.room) await this.room.leave();
+    this.show();
+    await this.startSearch();
+  }
+
+  private renderSearch(found = false) {
+    if (this.room && !this.roomSilent) return;
+    const s = Math.floor(this.mmInfo.elapsed / 1000);
+    const w = this.mmInfo.window;
+    this.el.innerHTML = `<div class="hub"><div class="search">
+      <div class="radar"><span></span><span></span><span></span><b>${found ? '⚔️' : avatarOf(this.profile!.profile!.avatar)}</b></div>
+      <h3>${found ? ot('mm.found') : ot('mm.title')}</h3>
+      ${found ? '' : `<p class="clock-big">${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}</p>
+      <p class="muted">${w === Infinity ? ot('mm.any') : ot('mm.window', { n: w })} · ${tierBadge(this.profile!.stats!.rating, undefined, true)}</p>
+      <p class="muted tip">${ot('mm.tip')}</p>
+      <button class="btn" data-act="cancelSearch">${ot('mm.cancel')}</button>`}
+    </div></div>`;
   }
 
   private async joinByCode(code: string) {
@@ -236,7 +316,8 @@ export class OnlineHub {
   /* ------------------------------------------------------------ render */
 
   private render() {
-    if (this.room) return; // the room view owns the panel
+    if (this.room && !this.roomSilent) return; // the room view owns the panel
+    if (this.mm) return this.renderSearch();
     if (this.state === 'loading' || this.state === 'idle') {
       this.el.innerHTML = `<div class="hub"><div class="hub-top">${this.backBtn()}</div><div class="hub-center"><div class="spinner"></div><p>${ot('loading')}</p></div></div>`;
       return;
@@ -310,7 +391,7 @@ export class OnlineHub {
               )
               .join('');
     return `<div class="play-grid">
-      ${card('quick', '⚔️', 'play.quick', 'play.quickSub', true)}
+      ${card('quick', '⚔️', 'play.quick', 'play.quickSub', false)}
       <div class="play-row">
         ${card('create', '🏠', 'play.create', 'play.createSub', false)}
         ${card('join', '🔑', 'play.join', null, false)}
@@ -446,6 +527,10 @@ export class OnlineHub {
         if (this.tab === 'profile') this.history = null;
         this.el.querySelectorAll('.hub-tabs button').forEach((b) => b.classList.toggle('on', b === t));
         return this.renderBody();
+      case 'quick':
+        return this.startSearch();
+      case 'cancelSearch':
+        return this.cancelSearch();
       case 'create':
         return this.createRoomDialog();
       case 'join':

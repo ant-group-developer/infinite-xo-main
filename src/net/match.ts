@@ -1,7 +1,7 @@
 import { Game } from '../core/game';
 import { other } from '../core/types';
 import type { Backend } from './backend';
-import { SERVER_TS, type Unsub } from './db';
+import { SERVER_TS, makeCode, type Unsub } from './db';
 import type { Room, RoomMember, RoomType, Side } from './schema';
 
 /** 2 minutes per move; running out loses the game. */
@@ -84,6 +84,59 @@ export async function startMatch(be: Backend, roomId: string, room: Room): Promi
     [`rooms/${roomId}/ready/X`]: null,
     [`rooms/${roomId}/ready/O`]: null,
   });
+}
+
+/** Lower rating plays X (moves first); equal ratings → random. */
+export function firstMover(a: number, b: number, rnd = Math.random): 'a' | 'b' {
+  if (a !== b) return a < b ? 'a' : 'b';
+  return rnd() < 0.5 ? 'a' : 'b';
+}
+
+/**
+ * Matchmaking fallback: a private 'bot' room where the persona plays the
+ * other side. Room, seats and the game are created in one atomic update.
+ */
+export async function createBotMatch(
+  be: Backend,
+  uid: string,
+  me: PlayerInfo,
+  bot: PlayerInfo,
+): Promise<string> {
+  const { db } = be;
+  const id = db.pushKey('rooms');
+  let code = '';
+  for (let i = 0; i < 8 && !code; i++) {
+    const c = makeCode();
+    const tx = await db.transaction<string>(`roomCodes/${c}`, (cur) => (cur ? undefined : id));
+    if (tx.committed) code = c;
+  }
+  const meFirst = firstMover(me.rating, bot.rating) === 'a';
+  const players: Record<Side, PlayerInfo> = meFirst ? { X: me, O: { ...bot, bot: true } } : { X: { ...bot, bot: true }, O: me };
+  await db.update({
+    [`rooms/${id}/meta`]: {
+      hostUid: uid,
+      name: 'Ranked',
+      visibility: 'private',
+      code,
+      type: 'bot',
+      createdAt: SERVER_TS,
+      lastActive: SERVER_TS,
+      status: 'playing',
+    },
+    [`rooms/${id}/members/${uid}`]: { name: me.name, avatar: me.avatar, country: me.country, rating: me.rating, joinedAt: SERVER_TS },
+    [`rooms/${id}/slots/X`]: players.X.uid,
+    [`rooms/${id}/slots/O`]: players.O.uid,
+    [`games/${id}`]: {
+      seq: 1,
+      type: 'bot',
+      players,
+      startedAt: SERVER_TS,
+      n: 0,
+      turn: 'X',
+      turnStart: SERVER_TS,
+    } satisfies GameDoc,
+  });
+  return id;
 }
 
 /** A seated player leaving mid-game loses (called before leaving the room). */
@@ -231,10 +284,21 @@ export class MatchSync {
   private pendingWrite = false;
 
   async move(x: number, y: number): Promise<MoveError | null> {
-    const d = this.doc;
     const side = this.mySide;
-    if (!d) return 'no-game';
+    if (!this.doc) return 'no-game';
     if (!side) return 'not-player';
+    return this.writeMove(side, x, y);
+  }
+
+  /** The human host plays the bot's move in a 'bot' room. */
+  async moveAs(side: Side, x: number, y: number): Promise<MoveError | null> {
+    if (!this.doc?.players[side].bot) return 'not-player';
+    return this.writeMove(side, x, y);
+  }
+
+  private async writeMove(side: Side, x: number, y: number): Promise<MoveError | null> {
+    const d = this.doc;
+    if (!d) return 'no-game';
     if (d.result || this.game.isOver) return 'over';
     if (d.turn !== side || this.game.turn !== side) return 'not-your-turn';
     if (this.game.board.has(x, y)) return 'occupied';
@@ -290,6 +354,21 @@ export class MatchSync {
     const side = this.mySide;
     if (!side || this.isOver || this.doc?.drawOffer) return false;
     await this.be.db.set(`games/${this.roomId}/drawOffer`, side);
+    return true;
+  }
+
+  /** Bot side resigns (bot rooms only). */
+  async botResign(botSide: Side) {
+    if (!this.doc?.players[botSide].bot || this.isOver) return false;
+    return this.writeResult({ winner: other(botSide), reason: 'resign' });
+  }
+
+  /** Bot answers the human's draw offer (bot rooms only). */
+  async botAnswerDraw(botSide: Side, accept: boolean) {
+    const offer = this.doc?.drawOffer;
+    if (!this.doc?.players[botSide].bot || !offer || offer === botSide || this.isOver) return false;
+    if (accept) return this.writeResult({ winner: null, reason: 'draw' });
+    await this.be.db.set(`games/${this.roomId}/drawOffer`, null);
     return true;
   }
 

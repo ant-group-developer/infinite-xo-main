@@ -5,7 +5,9 @@ const r = JSON.parse(fs.readFileSync(rf, 'utf8'));
 
 const G = "root.child('games/' + $rid";
 const room = (p) => `root.child('rooms/' + $rid + '/${p}')`;
-const turnPlayerIsMe = `${G} + '/players/' + ${G} + '/turn').val() + '/uid').val() === auth.uid`;
+const roomNew = (p) => `newData.parent().parent().child('rooms/' + $rid + '/${p}')`;
+const isBotHost = `(${room('meta/type')}.val() === 'bot' && ${room('meta/hostUid')}.val() === auth.uid)`;
+const turnPlayerIsMe = `(${G} + '/players/' + ${G} + '/turn').val() + '/uid').val() === auth.uid || (${G} + '/players/' + ${G} + '/turn').val() + '/bot').val() === true && ${isBotHost}))`;
 const noResult = `!${G} + '/result').exists()`;
 const inTime = `now <= ${G} + '/turnStart').val() + 123000`;
 const playerWrite = `auth != null && ${noResult} && ${turnPlayerIsMe} && ${inTime}`;
@@ -28,14 +30,14 @@ const after = `newData.parent().child('board/' + (${SX} + ${LEN} * ${DX}) + '_' 
 const dirOk = `((${DX} === 1 && (${DY} === 0 || ${DY} === 1 || ${DY} === -1)) || (${DX} === 0 && ${DY} === 1))`;
 const five = `newData.child('reason').val() === 'five' && ${W} === data.parent().child('turn').val() && ${dirOk} && ${LEN} >= 5 && ${LEN} <= 9 && ${cells} && ${before} !== ${W} && ${after} !== ${W} && !(${before} === ${OPP} && ${after} === ${OPP})`;
 const timeout = `newData.child('reason').val() === 'timeout' && now > data.parent().child('turnStart').val() + 120000 && ${W} !== data.parent().child('turn').val() && (${W} === 'X' || ${W} === 'O')`;
-const resign = `(newData.child('reason').val() === 'resign' || newData.child('reason').val() === 'abandon') && (${W} === 'X' || ${W} === 'O') && data.parent().child('players/' + ${OPP} + '/uid').val() === auth.uid`;
-const draw = `newData.child('reason').val() === 'draw' && !newData.child('winner').exists() && data.parent().child('drawOffer').exists() && data.parent().child('players/' + (data.parent().child('drawOffer').val() === 'X' ? 'O' : 'X') + '/uid').val() === auth.uid`;
+const resign = `(newData.child('reason').val() === 'resign' || newData.child('reason').val() === 'abandon') && (${W} === 'X' || ${W} === 'O') && (data.parent().child('players/' + ${OPP} + '/uid').val() === auth.uid || (data.parent().child('players/' + ${OPP} + '/bot').val() === true && ${isBotHost}))`;
+const draw = `newData.child('reason').val() === 'draw' && !newData.child('winner').exists() && data.parent().child('drawOffer').exists() && (data.parent().child('players/' + (data.parent().child('drawOffer').val() === 'X' ? 'O' : 'X') + '/uid').val() === auth.uid || (data.parent().child('players/' + (data.parent().child('drawOffer').val() === 'X' ? 'O' : 'X') + '/bot').val() === true && ${isBotHost}))`;
 const roomGone = `(${room('meta/hostUid')}.val() === auth.uid || !${room('meta')}.exists() || ${room('meta/lastActive')}.val() < now - 1800000)`;
 
 r.rules.games = {
   $rid: {
     '.read': 'auth != null',
-    '.write': `auth != null && ((newData.exists() && ${room('meta/hostUid')}.val() === auth.uid && newData.child('n').val() === 0 && !newData.child('moves').exists() && !newData.child('board').exists() && !newData.child('result').exists() && !newData.child('drawOffer').exists() && newData.child('turn').val() === 'X' && newData.child('seq').val() === (data.exists() ? data.child('seq').val() + 1 : 1) && newData.child('players/X/uid').val() === ${room('slots/X')}.val() && newData.child('players/O/uid').val() === ${room('slots/O')}.val()) || (!newData.exists() && ${roomGone}))`,
+    '.write': `auth != null && ((newData.exists() && ${roomNew('meta/hostUid')}.val() === auth.uid && newData.child('n').val() === 0 && !newData.child('moves').exists() && !newData.child('board').exists() && !newData.child('result').exists() && !newData.child('drawOffer').exists() && newData.child('turn').val() === 'X' && newData.child('seq').val() === (data.exists() ? data.child('seq').val() + 1 : 1) && newData.child('players/X/uid').val() === ${roomNew('slots/X')}.val() && newData.child('players/O/uid').val() === ${roomNew('slots/O')}.val()) || (!newData.exists() && ${roomGone}))`,
     '.validate': "newData.hasChildren(['seq', 'type', 'players', 'startedAt', 'n', 'turn', 'turnStart'])",
     seq: { '.validate': 'newData.isNumber()' },
     type: { '.validate': "newData.val() === 'casual' || newData.val() === 'ranked' || newData.val() === 'bot'" },
@@ -78,7 +80,7 @@ r.rules.games = {
       },
     },
     drawOffer: {
-      '.write': `auth != null && ${noResult} && (newData.exists() ? ${G} + '/players/' + newData.val() + '/uid').val() === auth.uid : (${G} + '/players/X/uid').val() === auth.uid || ${G} + '/players/O/uid').val() === auth.uid))`,
+      '.write': `auth != null && ${noResult} && (newData.exists() ? ${G} + '/players/' + newData.val() + '/uid').val() === auth.uid : (${G} + '/players/X/uid').val() === auth.uid || ${G} + '/players/O/uid').val() === auth.uid || ${isBotHost}))`,
       '.validate': "newData.val() === 'X' || newData.val() === 'O'",
     },
     result: {

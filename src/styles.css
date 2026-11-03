@@ -1628,3 +1628,79 @@ body.online-match .mid b {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ----------------------------------------------------------- matchmaking */
+
+.search {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+}
+.search h3 {
+  margin: 8px 0 0;
+  font-size: 24px;
+}
+.radar {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+}
+.radar b {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  font-size: 42px;
+  border-radius: 50%;
+  background: #1a0b3a;
+  border: 2px solid var(--cyan);
+  box-shadow: 0 0 24px -4px var(--cyan);
+}
+.radar span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--pink);
+  opacity: 0;
+  animation: radar 2.4s ease-out infinite;
+}
+.radar span:nth-child(2) {
+  animation-delay: 0.8s;
+}
+.radar span:nth-child(3) {
+  animation-delay: 1.6s;
+}
+@keyframes radar {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+.clock-big {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.search .muted {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.search .tip {
+  max-width: 320px;
+  font-size: 13px;
+  opacity: 0.8;
+}
