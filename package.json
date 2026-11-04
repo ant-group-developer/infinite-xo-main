@@ -19,11 +19,13 @@
     "docker:logs": "docker compose --env-file .env.local logs -f"
   },
   "devDependencies": {
+    "@types/three": "^0.187.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.5",
     "vitest": "^3.2.7"
   },
   "dependencies": {
-    "firebase": "^13.2.0"
+    "firebase": "^13.2.0",
+    "three": "^0.187.0"
   }
 }
