@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { keyOf } from '../core/board';
 import type { Game } from '../core/game';
 import type { Cell, Move, Player, WinLine } from '../core/types';
+import type { BoardView } from '../view/BoardView';
 
 /* ================================================================ themes */
 
@@ -87,12 +88,31 @@ type Anim = (now: number) => boolean; // return false when finished
 
 /* ============================================================ the board */
 
+export interface ThreeViewOptions {
+  theme?: Theme3D['id'];
+  camera?: CameraPreset;
+  /** bloom post-processing (off by default) */
+  glow?: boolean;
+}
+
+/** Is WebGL available? (the app falls back to 2D otherwise) */
+export function webglAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
+const reducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 /**
  * Three.js renderer for the infinite board. Reads the core Game (events) and
- * reports taps, exactly like the 2D CanvasView — so it can become a
- * BoardView implementation later.
+ * reports taps, exactly like the 2D CanvasView (same BoardView contract), so
+ * rules, bot, online play and rankings work unchanged.
  */
-export class ThreeBoard {
+export class ThreeView implements BoardView {
   onCellTap: ((cell: Cell) => void) | null = null;
 
   readonly renderer: THREE.WebGLRenderer;
@@ -101,7 +121,7 @@ export class ThreeBoard {
   readonly controls: MapControls;
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
-  private bloomOn = true;
+  private bloomOn = false;
 
   private theme: Theme3D = THEMES.neon;
   private gridMat!: THREE.ShaderMaterial;
@@ -126,7 +146,12 @@ export class ThreeBoard {
   private highlight!: THREE.Mesh;
   private lastRing!: THREE.Mesh;
   private winGroup: THREE.Group | null = null;
-  private interactive: Player | null = 'X';
+  private hintGroup: THREE.Group | null = null;
+  private arrow: HTMLButtonElement;
+  private interactive: Player | null = null;
+  private motion = !reducedMotion();
+  private slowFrames = 0;
+  private lowQuality = false;
   private hover: Cell | null = null;
 
   private ray = new THREE.Raycaster();
@@ -144,6 +169,7 @@ export class ThreeBoard {
   constructor(
     private host: HTMLElement,
     private game: Game,
+    opts: ThreeViewOptions = {},
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -151,6 +177,7 @@ export class ThreeBoard {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.info.autoReset = false;
     host.appendChild(this.renderer.domElement);
+    this.renderer.domElement.className = 'board-canvas board-3d';
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.touchAction = 'none';
 
@@ -178,7 +205,19 @@ export class ThreeBoard {
     this.buildMaterials();
     this.buildHelpers();
     this.scene.add(this.follow);
-    this.setTheme('neon');
+    this.setTheme(opts.theme ?? 'neon');
+    this.bloomOn = opts.glow ?? false;
+
+    // DOM arrow pointing at the last move when it is off-screen (click = fly there)
+    this.arrow = document.createElement('button');
+    this.arrow.className = 'offscreen-arrow';
+    this.arrow.hidden = true;
+    this.arrow.innerHTML = '<span class="oa-tip">▲</span><span class="oa-mark"></span>';
+    this.arrow.addEventListener('click', () => {
+      const m = this.game.lastMove;
+      if (m) this.lookAt(m.x, m.y);
+    });
+    host.appendChild(this.arrow);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
@@ -186,12 +225,26 @@ export class ThreeBoard {
     this.bindInput();
 
     for (const m of game.moves) this.addPiece(m, false);
+    if (game.winLine && game.winner) this.showWin(game.winLine, game.winner, false);
     this.unsub = game.on((e) => {
-      if (e.type === 'move') this.addPiece(e.move, true);
-      else if (e.type === 'win') this.showWin(e.line, e.winner);
-      else if (e.type === 'reset') this.clear();
-      else if (e.type === 'undo') for (const m of e.moves) this.removePiece(m);
+      if (e.type === 'move') {
+        this.showHint(null);
+        this.addPiece(e.move, this.motion);
+        this.ensureVisible(e.move.x, e.move.y);
+      } else if (e.type === 'win') this.showWin(e.line, e.winner, true);
+      else if (e.type === 'reset') {
+        this.clear();
+        this.recenter(true);
+      } else if (e.type === 'undo') {
+        this.showHint(null);
+        for (const m of e.moves) this.removePiece(m);
+        const last = this.game.lastMove;
+        if (last) this.placeLastRing(last);
+        else this.lastRing.visible = false;
+      }
     });
+    this.setCameraPreset(opts.camera ?? 'tilt', false);
+    if (game.moves.length) this.recenter(false);
 
     const loop = (now: number) => {
       this.frame(now);
@@ -383,6 +436,72 @@ export class ThreeBoard {
 
   setInteractive(p: Player | null) {
     this.interactive = p;
+    this.renderer.domElement.style.cursor = p ? 'pointer' : 'grab';
+  }
+
+  /** Pulsing golden marker + light pillar on a suggested cell (null clears). */
+  showHint(cell: Cell | null) {
+    if (this.hintGroup) {
+      this.scene.remove(this.hintGroup);
+      this.hintGroup = null;
+    }
+    if (!cell) return;
+    const g = (this.hintGroup = new THREE.Group());
+    g.position.set(cell.x, 0, cell.y);
+    const ring = new THREE.Mesh(this.geo.ring, new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.012;
+    const pillar = new THREE.Mesh(this.geo.beam, new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.25, depthWrite: false }));
+    pillar.scale.set(0.28, 3, 0.28);
+    pillar.position.y = 1.5;
+    g.add(ring, pillar);
+    this.scene.add(g);
+    this.ensureVisible(cell.x, cell.y);
+    const t0 = performance.now();
+    this.anims.push((now) => {
+      if (this.hintGroup !== g) return false;
+      const k = ((now - t0) / 900) % 1;
+      ring.scale.setScalar(0.7 + 0.6 * k);
+      (ring.material as THREE.MeshBasicMaterial).opacity = 1 - k;
+      (pillar.material as THREE.MeshBasicMaterial).opacity = 0.18 + 0.1 * Math.sin(now / 200);
+      return true;
+    });
+  }
+
+  /** Red flash on a cell that cannot be played. */
+  reject(cell: Cell) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff4d6d, transparent: true, opacity: 0.6, depthWrite: false });
+    const sq = new THREE.Mesh(this.geo.cell, mat);
+    sq.rotation.x = -Math.PI / 2;
+    sq.position.set(cell.x, 0.015, cell.y);
+    this.scene.add(sq);
+    const t0 = performance.now();
+    this.anims.push((now) => {
+      const k = Math.min(1, (now - t0) / 420);
+      sq.position.x = cell.x + Math.sin(k * Math.PI * 6) * 0.06 * (1 - k);
+      mat.opacity = 0.6 * (1 - k);
+      if (k >= 1) {
+        this.scene.remove(sq);
+        mat.dispose();
+      }
+      return k < 1;
+    });
+  }
+
+  zoomBy(factor: number) {
+    const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
+    const dist = Math.min(this.controls.maxDistance, Math.max(this.controls.minDistance, sph.radius / factor));
+    this.flyTo(this.controls.target.clone(), dist, sph.phi, sph.theta, 220);
+  }
+
+  /** Pan (keeping the angle) so a cell is in the middle. */
+  lookAt(x: number, y: number) {
+    const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
+    this.flyTo(new THREE.Vector3(x, 0, y), sph.radius, sph.phi, sph.theta, 500);
+  }
+
+  destroy() {
+    this.dispose();
   }
 
   setCameraPreset(preset: CameraPreset, animate = true) {
@@ -392,15 +511,26 @@ export class ThreeBoard {
     this.flyTo(this.controls.target.clone(), dist, polar, azim, animate ? 700 : 0);
   }
 
-  /** Fit the camera to all stones. */
-  recenter() {
+  /** Fit the camera to all stones (keeps the current viewing angle). */
+  recenter(animate = true) {
+    const ms = animate && this.motion ? 600 : 0;
     const b = this.game.board.bounds();
-    if (!b) return this.flyTo(new THREE.Vector3(0, 0, 0), 17, 0.78, 0, 600);
+    if (!b) {
+      const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
+      return this.flyTo(new THREE.Vector3(0, 0, 0), 17, sph.phi, sph.theta, ms);
+    }
     const cx = (b.minX + b.maxX) / 2,
       cz = (b.minY + b.maxY) / 2;
     const span = Math.max(b.maxX - b.minX, b.maxY - b.minY) + 6;
     const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
-    this.flyTo(new THREE.Vector3(cx, 0, cz), Math.max(9, Math.min(40, span * 1.35)), sph.phi, sph.theta, 600);
+    this.flyTo(new THREE.Vector3(cx, 0, cz), Math.max(9, Math.min(40, span * 1.35)), sph.phi, sph.theta, ms);
+  }
+
+  /** Follow the action: if a cell drifts out of the middle of the view, glide towards it. */
+  private ensureVisible(x: number, y: number) {
+    const p = new THREE.Vector3(x, 0, y).project(this.camera);
+    if (Math.abs(p.x) < 0.7 && Math.abs(p.y) < 0.7 && p.z < 1) return;
+    this.lookAt(x, y);
   }
 
   /** Place a decorative stone without touching the game (stress test). */
@@ -410,6 +540,7 @@ export class ThreeBoard {
 
   dispose() {
     cancelAnimationFrame(this.raf);
+    this.arrow.remove();
     this.ro.disconnect();
     this.unsub();
     this.controls.dispose();
@@ -427,9 +558,7 @@ export class ThreeBoard {
     this.scene.add(g);
     this.pieces.set(k, g);
     this.stats.pieces = this.pieces.size;
-    this.lastRing.visible = true;
-    this.lastRing.position.set(m.x, 0.006, m.y);
-    (this.lastRing.material as THREE.MeshBasicMaterial).color.set(m.p === 'X' ? this.theme.x : this.theme.o);
+    this.placeLastRing(m);
     if (!animate) return;
 
     const t0 = performance.now();
@@ -447,6 +576,12 @@ export class ThreeBoard {
     setTimeout(() => this.ripple(m.x, m.y, m.p === 'X' ? this.theme.x : this.theme.o), DROP_MS * 0.35);
   }
 
+  private placeLastRing(m: Move) {
+    this.lastRing.visible = !this.game.isOver;
+    this.lastRing.position.set(m.x, 0.006, m.y);
+    (this.lastRing.material as THREE.MeshBasicMaterial).color.set(m.p === 'X' ? this.theme.x : this.theme.o);
+  }
+
   private removePiece(m: Move) {
     const k = keyOf(m.x, m.y);
     const g = this.pieces.get(k);
@@ -456,6 +591,7 @@ export class ThreeBoard {
   }
 
   private clear() {
+    this.showHint(null);
     for (const g of this.pieces.values()) this.scene.remove(g);
     this.pieces.clear();
     this.stats.pieces = 0;
@@ -486,7 +622,7 @@ export class ThreeBoard {
 
   /* --------------------------------------------------------------- win */
 
-  private showWin(line: WinLine, winner: Player) {
+  private showWin(line: WinLine, winner: Player, animate: boolean) {
     const inLine = new Set(line.cells.map((c) => keyOf(c.x, c.y)));
     for (const [k, g] of this.pieces) {
       const p = g.userData.player as Player;
@@ -534,8 +670,8 @@ export class ThreeBoard {
     group.add(new THREE.Points(pg, pm));
 
     const winners = line.cells.map((c) => this.pieces.get(keyOf(c.x, c.y))).filter(Boolean) as THREE.Group[];
-    const t0 = performance.now();
-    let last = t0;
+    const t0 = performance.now() - (animate && this.motion ? 0 : 5000); // no fanfare when restoring / reduced motion
+    let last = performance.now();
     this.anims.push((now) => {
       const t = (now - t0) / 1000;
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -571,7 +707,7 @@ export class ThreeBoard {
 
     // Camera: fly to frame the whole line.
     const sph = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
-    this.flyTo(new THREE.Vector3(mid.x, 0, mid.z), Math.max(9, len * 1.6), Math.min(sph.phi, 0.95), sph.theta, 800);
+    this.flyTo(new THREE.Vector3(mid.x, 0, mid.z), Math.max(9, len * 1.6), Math.min(sph.phi, 0.95), sph.theta, animate && this.motion ? 800 : 0);
   }
 
   /* ------------------------------------------------------------- camera */
@@ -647,6 +783,39 @@ export class ThreeBoard {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Edge arrow towards the last move when it is outside the view. */
+  private updateArrow() {
+    const m = this.game.lastMove;
+    if (!m) {
+      this.arrow.hidden = true;
+      return;
+    }
+    const p = new THREE.Vector3(m.x, PIECE_Y, m.y).project(this.camera);
+    const behind = p.z > 1;
+    const inside = !behind && Math.abs(p.x) <= 0.98 && Math.abs(p.y) <= 0.98;
+    if (inside) {
+      this.arrow.hidden = true;
+      return;
+    }
+    let dx = behind ? -p.x : p.x;
+    let dy = behind ? -p.y : p.y;
+    const s = Math.max(Math.abs(dx), Math.abs(dy)) || 1;
+    dx /= s;
+    dy /= s;
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    const inset = 28;
+    const x = (dx * 0.5 + 0.5) * (w - inset * 2) + inset;
+    const y = (-dy * 0.5 + 0.5) * (h - inset * 2) + inset;
+    this.arrow.hidden = false;
+    this.arrow.style.transform = `translate(${x - 18}px, ${y - 18}px)`;
+    const tip = this.arrow.firstElementChild as HTMLElement;
+    tip.style.transform = `rotate(${Math.atan2(dx, dy)}rad)`;
+    const mark = this.arrow.lastElementChild as HTMLElement;
+    mark.textContent = m.p;
+    mark.className = 'oa-mark ' + (m.p === 'X' ? 'x' : 'o');
+  }
+
   private frame(now: number) {
     this.anims = this.anims.filter((a) => a(now));
     this.controls.update();
@@ -669,7 +838,7 @@ export class ThreeBoard {
     const h = this.hover;
     const canPlace = !!h && !!this.interactive && !this.game.isOver && !this.game.board.has(h.x, h.y);
     for (const p of ['X', 'O'] as Player[]) this.ghost![p].visible = canPlace && this.interactive === p;
-    this.highlight.visible = !!h && !this.game.isOver;
+    this.highlight.visible = canPlace;
     if (h) {
       this.highlight.position.set(h.x, 0.004, h.y);
       if (canPlace) {
@@ -688,11 +857,22 @@ export class ThreeBoard {
     if (this.bloomOn) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
 
+    this.updateArrow();
+
     this.frames++;
     if (now - this.fpsT0 >= 1000) {
       this.stats.fps = Math.round((this.frames * 1000) / (now - this.fpsT0));
       this.frames = 0;
       this.fpsT0 = now;
+      // Auto quality: 3 slow seconds in a row (visible tab) → drop bloom and resolution.
+      if (!document.hidden && this.stats.fps > 3 && this.stats.fps < 40) this.slowFrames++;
+      else this.slowFrames = 0;
+      if (this.slowFrames >= 3 && !this.lowQuality) {
+        this.lowQuality = true;
+        this.bloomOn = false;
+        this.renderer.setPixelRatio(1);
+        this.resize();
+      }
     }
     this.stats.calls = this.renderer.info.render.calls;
     this.stats.triangles = this.renderer.info.render.triangles;

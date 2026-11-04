@@ -1,23 +1,14 @@
-# Prototype 3D — bản mô phỏng để duyệt
+# Bản 3D
 
-> Trạng thái: **chờ duyệt**. Game chính chưa bị thay đổi gì; prototype là một trang riêng.
+> Trạng thái: **đã tích hợp vào game** (nhánh `feat/3d`). Trang prototype `proto3d.html` đã được gỡ.
 
-## Xem thử
+## Dùng thế nào
 
-```bash
-npm run dev            # rồi mở  http://localhost:<PORT>/proto3d.html
-```
-
-Trang dùng **đúng luật game** (`src/core`) và **đúng bot** (`src/ai`). Bấm chuột để đặt quân, thắng thật, hiệu ứng thật. Bảng bên phải dùng để so sánh các lựa chọn:
-
-| Nút | Để làm gì |
-|---|---|
-| ▶ Tự đánh | Bot tự đánh với nhau liên tục để xem hiệu ứng rơi quân / thắng |
-| Góc camera: Nghiêng · Từ trên · Điện ảnh | 3 góc nhìn đề xuất |
-| Bộ màu: Neon · Hoàng hôn · Băng | 3 phong cách |
-| ✨ Phát sáng | Bật/tắt hiệu ứng bloom (để so sánh, và để đo hiệu năng) |
-| +300 quân | Thử tải: thêm 300 quân trang trí ở xa |
-| Hiệu năng | FPS, số lệnh vẽ (draw call), số tam giác, số quân |
+- Nút **3D** trên thanh trên cùng (cạnh nút Hồ sơ) để chuyển sang 3D; bấm lại (**2D**) để quay về. Chuyển được **giữa ván**, kể cả khi đang đánh online, vì renderer chỉ đọc `Game`.
+- Lựa chọn được lưu trong `localStorage` (`infinite-xo:settings` → `view`, `cam3d`, `theme3d`, `glow3d`); mở lại game sẽ vào đúng chế độ đã chọn.
+- Ở chế độ 3D có thêm nút ⬡ (dưới nút ⌖) mở **Cài đặt 3D**: góc camera, bộ màu, hiệu ứng phát sáng. Đổi là áp dụng ngay.
+- **Mặc định:** camera **Nghiêng**, bộ màu **Neon**, phát sáng (bloom) **Tắt**.
+- Three.js chỉ tải khi bật 3D lần đầu (chunk riêng ≈ 148 KB gzip); bản 2D vẫn ≈ 49 KB gzip. Máy không có WebGL sẽ báo và giữ 2D.
 
 ## Ảnh
 
@@ -59,25 +50,15 @@ Trang dùng **đúng luật game** (`src/core`) và **đúng bot** (`src/ai`). B
 - **Dung lượng:** Three.js + bloom ≈ **150 KB gzip**. Sẽ chỉ tải khi người chơi bật 3D (dynamic import), nên game 2D vẫn ~44 KB gzip như bây giờ.
 - Chưa đo trên điện thoại thật. Bloom tốn nhiều băng thông điểm ảnh nhất, nên bản thật sẽ có chế độ chất lượng tự hạ khi FPS thấp (tắt bloom, giảm độ phân giải).
 
-## Kế hoạch tích hợp (sau khi duyệt)
+## Đã làm khi tích hợp
 
-1. `ThreeView` cài đúng interface `BoardView` mà bản 2D đang dùng: `onCellTap`, `setInteractive`, `showHint`, `recenter`, `zoomBy`, `reject`. Toàn bộ luật, bot, online, phòng, xếp hạng **không phải sửa gì**, vì renderer chỉ đọc `Game`.
-2. Nút **2D / 3D** trên thanh trên cùng, lưu lựa chọn. 3D tải lazy; máy không có WebGL thì tự quay về 2D.
-3. Bổ sung phần prototype còn thiếu:
-   - đánh dấu ô gợi ý,
-   - chớp đỏ khi bấm ô đã có quân,
-   - mũi tên chỉ nước cuối khi nằm ngoài màn hình (lớp HTML trên canvas),
-   - chuyển `InstancedMesh`,
-   - chế độ chất lượng tự động.
-4. Tôn trọng `prefers-reduced-motion`: tắt nảy/rung/bay camera. Khi bàn đứng yên thì chỉ vẽ lại lúc có thay đổi để đỡ tốn pin.
-5. Test: chạy lại toàn bộ test hiện có, thêm test chuyển 2D↔3D giữa ván (kể cả đang đánh online).
+- `src/view3d/ThreeView.ts` cài interface `BoardView` giống `CanvasView`: `onCellTap`, `setInteractive`, `showHint` (cột sáng vàng), `reject` (chớp đỏ), `recenter`, `zoomBy`, `destroy`.
+- Mũi tên chỉ nước cuối khi nằm ngoài khung nhìn (lớp HTML trên canvas).
+- Chất lượng tự động: 3 giây liền FPS thấp thì tắt bloom và hạ độ phân giải.
+- Tôn trọng `prefers-reduced-motion`: tắt nảy/rung/bay camera.
+- `App.setViewMode('2d' | '3d')` huỷ view cũ, tạo view mới trên cùng `Game`.
 
-Ước lượng: **khoảng 2 ngày công.**
+## Chưa làm
 
-## Cần mày chốt
-
-1. **Phong cách:** Neon / Hoàng hôn / Băng — chọn một làm mặc định, hay cho người chơi tự chọn cả ba?
-2. **Góc camera mặc định:** Nghiêng (đề xuất), Từ trên, hay Điện ảnh? Có cho người chơi xoay tự do không?
-3. **Quân cờ:** đang **nằm phẳng** trên bàn. Ở góc Điện ảnh, X nhìn hơi dẹt (xem ảnh Hoàng hôn). Phương án khác là **dựng quân đứng** (dễ nhìn ở góc thấp, giống quân cờ thật) hoặc nghiêng nhẹ về phía camera.
-4. **3D là tuỳ chọn** (mặc định vẫn 2D, bật 3D bằng nút) hay **3D là mặc định**, có nút về 2D?
-5. Hiệu ứng thắng: giữ như hiện tại hay muốn mạnh/nhẹ hơn?
+- Gộp quân bằng `InstancedMesh`: hiện mỗi X là 2 mesh, mỗi O là 1 mesh. Ván thường (< 100 quân) không thành vấn đề; ván rất dài trên điện thoại yếu có thể nặng.
+- Chưa đo trên điện thoại thật.

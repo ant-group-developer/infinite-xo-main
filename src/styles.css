@@ -1937,3 +1937,79 @@ button.hub-me:hover {
     font-size: 22px;
   }
 }
+
+/* ------------------------------------------------------------- 3D view */
+
+.only-3d {
+  display: none !important;
+}
+body.view-3d .only-3d {
+  display: grid !important;
+}
+.ib.view-toggle {
+  color: var(--cyan);
+  border-color: #1ff4ff66;
+}
+body.view-3d .ib.view-toggle {
+  color: var(--pink);
+  border-color: #ff2bd666;
+}
+body.view-3d .stage {
+  background: #05010f;
+}
+.board-canvas.board-3d {
+  cursor: grab;
+}
+.board-canvas.board-3d:active {
+  cursor: grabbing;
+}
+.offscreen-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #10062ad9;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 12px -2px var(--gold);
+  font-weight: 800;
+}
+.offscreen-arrow[hidden] {
+  display: none;
+}
+.offscreen-arrow .oa-tip {
+  position: absolute;
+  inset: -11px 0 auto;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--gold);
+  transform-origin: 50% 29px;
+}
+.offscreen-arrow .oa-mark.x {
+  color: var(--pink);
+}
+.offscreen-arrow .oa-mark.o {
+  color: var(--cyan);
+}
+.view-settings {
+  display: grid;
+  gap: 8px;
+}
+.view-settings h4 {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--dim);
+}
+.view-seg {
+  justify-content: stretch;
+}
+.view-seg button {
+  flex: 1 1 0;
+  justify-content: center;
+  text-align: center;
+}

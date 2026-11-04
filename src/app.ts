@@ -13,6 +13,7 @@ import { CanvasView } from './view2d/CanvasView';
 import { OnlineHub } from './online/OnlineHub';
 import { ProfilePage } from './online/ProfilePage';
 import { onlineEnabled } from './runtimeConfig';
+import type { CameraPreset, Theme3D, ThreeView } from './view3d/ThreeView';
 
 type Opp = 'bot' | 'two';
 const LEVELS: Level[] = ['easy', 'medium', 'hard'];
@@ -24,6 +25,11 @@ interface Settings {
   sound: boolean;
   lang: Lang;
   seenHelp: boolean;
+  /** board renderer: classic 2D canvas or Three.js */
+  view: '2d' | '3d';
+  theme3d: Theme3D['id'];
+  cam3d: CameraPreset;
+  glow3d: boolean;
 }
 
 interface Record3 {
@@ -68,7 +74,13 @@ export class App {
     sound: true,
     lang: navigator.language?.toLowerCase().startsWith('vi') ? 'vi' : 'vi',
     seenHelp: false,
+    view: '2d',
+    theme3d: 'neon',
+    cam3d: 'tilt',
+    glow3d: false,
   });
+  private viewMode: '2d' | '3d' = '2d';
+  private switchingView = false;
   private stats: Stats = load<Stats>('stats', freshStats());
   private session = { bot: { you: 0, bot: 0, d: 0 }, two: { X: 0, O: 0, d: 0 } };
 
@@ -93,6 +105,7 @@ export class App {
     this.hub.onOpenProfile = () => void this.profilePage.open();
     this.view = new CanvasView($('stage'), this.game);
     this.view.onCellTap = (c) => this.onTap(c);
+    if (this.settings.view === '3d') void this.setViewMode('3d', false);
     this.game.on((e) => this.onGameEvent(e));
 
     const unlock = () => sfx.unlock();
@@ -108,6 +121,94 @@ export class App {
       this.saveSettings();
       setTimeout(() => this.showHelp(), 300);
     }
+  }
+
+  /* ------------------------------------------------------- 2D / 3D view */
+
+  /** Swap the board renderer. 3D (three.js) is downloaded only when first used. */
+  async setViewMode(mode: '2d' | '3d', save = true) {
+    if (mode === this.viewMode || this.switchingView) return;
+    this.switchingView = true;
+    try {
+      let next: BoardView;
+      if (mode === '3d') {
+        const loading = setTimeout(() => toast(t('toast.loading3d')), 250);
+        const mod = await import('./view3d/ThreeView');
+        clearTimeout(loading);
+        if (!mod.webglAvailable()) {
+          toast(t('toast.no3d'), 2500);
+          if (save) {
+            this.settings.view = '2d';
+            this.saveSettings();
+          }
+          return;
+        }
+        this.view.destroy();
+        next = new mod.ThreeView($('stage'), this.game, {
+          theme: this.settings.theme3d,
+          camera: this.settings.cam3d,
+          glow: this.settings.glow3d,
+        });
+      } else {
+        this.view.destroy();
+        next = new CanvasView($('stage'), this.game);
+        next.recenter(false);
+      }
+      next.onCellTap = (c) => this.onTap(c);
+      this.view = next;
+      this.viewMode = mode;
+      document.body.classList.toggle('view-3d', mode === '3d');
+      if (save) {
+        this.settings.view = mode;
+        this.saveSettings();
+      }
+      this.applyTexts();
+    } catch (e) {
+      console.error('[3d] failed to start', e);
+      toast(t('toast.no3d'), 2500);
+    } finally {
+      this.switchingView = false;
+    }
+  }
+
+  private show3dSettings() {
+    const v = this.view as unknown as ThreeView;
+    if (this.viewMode !== '3d') return;
+    const seg = (name: string, cur: string, opts: [string, TKey][]) =>
+      `<div class="seg view-seg" data-group="${name}">${opts
+        .map(([id, key]) => `<button data-v="${id}" class="${id === cur ? 'on' : ''}">${t(key)}</button>`)
+        .join('')}</div>`;
+    const m = showModal({
+      title: t('view.settings'),
+      body: `<div class="view-settings">
+        <h4>${t('view.camera')}</h4>${seg('cam', this.settings.cam3d, [['tilt', 'cam.tilt'], ['top', 'cam.top'], ['cinema', 'cam.cinema']])}
+        <h4>${t('view.theme')}</h4>${seg('theme', this.settings.theme3d, [['neon', 'theme.neon'], ['sunset', 'theme.sunset'], ['ice', 'theme.ice']])}
+        <h4>${t('view.glow')}</h4>${seg('glow', this.settings.glow3d ? 'on' : 'off', [['off', 'glow.off'], ['on', 'glow.on']])}
+        <p class="muted small">${t('view.glowNote')}</p>
+        <p class="muted small">${t('view.controls')}</p>
+      </div>`,
+      buttons: [{ label: 'OK', kind: 'primary' }],
+    });
+    m.querySelectorAll<HTMLElement>('.view-seg').forEach((g) =>
+      g.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-v]');
+        if (!b) return;
+        sfx.click();
+        g.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        const val = b.dataset.v!;
+        if (g.dataset.group === 'cam') {
+          this.settings.cam3d = val as CameraPreset;
+          v.setCameraPreset(this.settings.cam3d);
+        } else if (g.dataset.group === 'theme') {
+          this.settings.theme3d = val as Theme3D['id'];
+          v.setTheme(this.settings.theme3d);
+        } else {
+          this.settings.glow3d = val === 'on';
+          v.setBloom(this.settings.glow3d);
+        }
+        this.saveSettings();
+      }),
+    );
   }
 
   /* ------------------------------------------------- online mode hooks */
@@ -515,6 +616,8 @@ export class App {
     on('bHelp', () => this.showHelp());
     on('bStats', () => this.showStats());
     on('bProfile', () => void this.profilePage.open());
+    on('bView', () => void this.setViewMode(this.viewMode === '3d' ? '2d' : '3d'));
+    on('b3dSettings', () => this.show3dSettings());
     on('bCenter', () => this.view.recenter(true));
     on('bZoomIn', () => this.view.zoomBy(1.3));
     on('bZoomOut', () => this.view.zoomBy(1 / 1.3));
@@ -553,6 +656,10 @@ export class App {
     $('logoT').textContent = t('title');
     document.title = getLang() === 'vi' ? 'XO Vô Hạn — Infinite XO' : 'Infinite XO';
     setBtn('bProfile', icons.user, getLang() === 'vi' ? 'Hồ sơ' : 'Profile', false);
+    $('bView').textContent = this.viewMode === '3d' ? '2D' : '3D';
+    $('bView').title = t(this.viewMode === '3d' ? 'view.to2d' : 'view.to3d');
+    $('bView').setAttribute('aria-label', $('bView').title);
+    setBtn('b3dSettings', icons.cube, t('view.settings'), false);
     $('bProfile').style.display = onlineEnabled() ? '' : 'none';
     setBtn('bStats', icons.trophy, t('stats'), false);
     setBtn('bSound', this.settings.sound ? icons.soundOn : icons.soundOff, t('sound'), false);
