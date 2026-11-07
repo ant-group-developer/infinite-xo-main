@@ -34,7 +34,8 @@ Cấu hình đọc từ biến môi trường **lúc chạy** (không cần buil
 
 - [`docs/RESEARCH-POKI.md`](docs/RESEARCH-POKI.md) — phân tích source game Poki.
 - [`docs/DESIGN.md`](docs/DESIGN.md) — kiến trúc, AI, renderer.
-- [`docs/THREEJS-3D.md`](docs/THREEJS-3D.md) — nghiên cứu & kế hoạch bản 3D bằng Three.js.
+- [`docs/THREEJS-3D.md`](docs/THREEJS-3D.md) — nghiên cứu bản 3D bằng Three.js.
+- [`docs/3D-PROTOTYPE.md`](docs/3D-PROTOTYPE.md) — bản 3D: cách dùng, ảnh, hiệu năng.
 
 ## Online
 
