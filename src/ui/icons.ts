@@ -19,6 +19,9 @@ export const icons = {
   swap: svg(`<path d="M7 4 3.5 7.5 7 11M3.5 7.5H17M17 13l3.5 3.5L17 20M20.5 16.5H7" ${S}/>`),
   globe: svg(`<circle cx="12" cy="12" r="9" ${S}/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9S14.6 18.4 12 21M12 3C9.4 5.6 8.2 8.6 8.2 12s1.2 6.4 3.8 9" ${S}/>`),
   cube: svg(`<path d="M12 2.8 20 7.2v9.6L12 21.2 4 16.8V7.2z" ${S}/><path d="M4 7.2 12 11.6 20 7.2M12 11.6v9.6" ${S}/>`),
+  home: svg(`<path d="M4 11.5 12 4.5l8 7" ${S}/><path d="M6.5 10v9.5h11V10" ${S}/><path d="M10 19.5v-5h4v5" ${S}/>`),
+  dice: svg(`<rect x="4" y="4" width="16" height="16" rx="4" ${S}/><circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="15" cy="15" r="1.5" fill="currentColor"/><circle cx="15" cy="9" r="1.5" fill="currentColor"/><circle cx="9" cy="15" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>`),
+  play: svg(`<path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>`),
   user: svg(`<circle cx="12" cy="8" r="4" ${S}/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" ${S}/>`),
   trophy: svg(`<path d="M7 4h10v5a5 5 0 0 1-10 0z" ${S}/><path d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5M12 14v3.5M8 20.5h8M9.5 17.5h5v3h-5z" ${S}/>`),
 };

@@ -18,31 +18,32 @@
         <div class="floor-wrap"><div class="floor"><div class="floor-lines"></div></div></div>
       </div>
 
-      <header class="top">
-        <div class="logo"><span class="lg-t" id="logoT"></span><span class="lg-u" id="logoU">∞</span></div>
+      <header class="top game-ui">
+        <div class="top-l">
+          <button id="bMenu" class="ib"></button>
+          <div class="logo"><span class="lg-t" id="logoT"></span><span class="lg-u" id="logoU">∞</span></div>
+        </div>
         <div class="top-r">
           <button id="bView" class="ib lang view-toggle"></button>
           <button id="bProfile" class="ib"></button>
-          <button id="bStats" class="ib"></button>
           <button id="bSound" class="ib"></button>
           <button id="bHelp" class="ib"></button>
-          <button id="bLang" class="ib lang"></button>
         </div>
       </header>
 
-      <section class="score">
+      <section class="score game-ui">
         <div class="pl" id="plX"><div class="pm"></div><div class="pn"></div><div class="ps">0</div></div>
         <div class="mid"><span id="drLabel"></span><b id="sDraw">0</b></div>
         <div class="pl" id="plO"><div class="pm"></div><div class="pn"></div><div class="ps">0</div></div>
       </section>
 
-      <div class="status">
+      <div class="status game-ui">
         <button id="bUndo" class="chip"></button>
         <div class="st-txt"><div id="status"></div><div id="sub"></div></div>
         <button id="bHint" class="chip"></button>
       </div>
 
-      <main class="stage" id="stage">
+      <main class="stage game-ui" id="stage">
         <div class="stage-tools">
           <button id="bZoomIn" class="tool"></button>
           <button id="bZoomOut" class="tool"></button>
@@ -51,18 +52,43 @@
         </div>
       </main>
 
-      <footer class="ctrl">
-        <div class="row">
-          <div class="seg" id="opp"></div>
-          <div class="seg" id="levels"></div>
-          <button class="pill" id="bSide"></button>
-        </div>
+      <footer class="ctrl game-ui">
         <div class="row actions">
           <button class="act" id="bResign"></button>
           <button class="act" id="bDraw"></button>
           <button class="act primary" id="bNew"></button>
         </div>
       </footer>
+
+      <!-- Start menu: shown on load and from the in-game Menu button (filled by App.renderMenu). -->
+      <section id="menu" class="menu" aria-labelledby="mnTitle">
+        <div class="mn-wrap">
+          <div class="mn-top">
+            <button id="mStats" class="ib"></button>
+            <button id="mSound" class="ib"></button>
+            <button id="mHelp" class="ib"></button>
+            <button id="mLang" class="ib lang"></button>
+          </div>
+          <h1 class="mn-logo" id="mnTitle">
+            <span class="mn-marks" id="mnMarks" aria-hidden="true"></span>
+            <span class="mn-name"><span class="lg-t" id="mnName"></span><span class="lg-u" aria-hidden="true">∞</span></span>
+          </h1>
+          <div class="mn-group" id="mnModeG">
+            <div class="mn-lbl" id="mnModeL"></div>
+            <div class="mn-opts mn-mode" id="mnMode" role="radiogroup" aria-labelledby="mnModeL"></div>
+          </div>
+          <div class="mn-group" id="mnLevelG">
+            <div class="mn-lbl" id="mnLevelL"></div>
+            <div class="mn-opts mn-level" id="mnLevel" role="radiogroup" aria-labelledby="mnLevelL"></div>
+          </div>
+          <div class="mn-group" id="mnSideG">
+            <div class="mn-lbl" id="mnSideL"></div>
+            <div class="mn-opts mn-side" id="mnSide" role="radiogroup" aria-labelledby="mnSideL"></div>
+          </div>
+          <button id="mPlay" class="mn-play"></button>
+          <button id="mResume" class="mn-resume" hidden></button>
+        </div>
+      </section>
 
       <div id="online" class="online" hidden></div>
       <div id="profilePage" class="online profile-page" hidden></div>

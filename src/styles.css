@@ -177,9 +177,15 @@ button:focus-visible {
   color: var(--gold);
   text-shadow: 0 0 12px #ffd23a99;
 }
+.top-l,
 .top-r {
   display: flex;
+  align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.top-l {
+  gap: 10px;
 }
 .ib {
   width: 40px;
@@ -200,8 +206,7 @@ button:focus-visible {
 .ib:active,
 .chip:active,
 .act:active,
-.tool:active,
-.pill:active {
+.tool:active {
   transform: scale(0.94);
 }
 .ib.lang {
@@ -450,22 +455,6 @@ button:focus-visible {
   color: #1a0b3a;
   background: linear-gradient(90deg, #ffd9f6, #d9fbff);
   box-shadow: 0 0 14px -2px #ff2bd699;
-}
-.pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 14px;
-  color: var(--dim);
-  background: #ffffff0d;
-  border: 1px solid #8a6bff40;
-}
-.pill .mark {
-  width: 18px;
-  height: 18px;
 }
 .actions .act {
   display: flex;
@@ -780,9 +769,6 @@ button:focus-visible {
 
 /* ================================================================ online */
 
-.seg .online-btn {
-  color: var(--cyan);
-}
 .online {
   position: fixed;
   inset: 0;
@@ -1409,7 +1395,8 @@ button:focus-visible {
 
 /* ------------------------------------------------------------ online match */
 
-body.online-match .ctrl .row:first-child {
+/* the online match has its own "leave / room" button (bUndo) */
+body.online-match #bMenu {
   display: none;
 }
 body.online-match .mid b {
@@ -2012,4 +1999,288 @@ body.view-3d .stage {
   flex: 1 1 0;
   justify-content: center;
   text-align: center;
+}
+
+/* ------------------------------------------------------------ start menu */
+
+.menu {
+  position: fixed;
+  inset: 0;
+  z-index: 13; /* over the game; under the online hub (15), modals (20) and toasts (30) */
+  display: flex;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: radial-gradient(120% 75% at 50% 0%, #2a0f5ef0 0%, #0a0420f5 65%);
+  backdrop-filter: blur(6px);
+  animation: fade 0.18s ease-out;
+}
+.menu[hidden] {
+  display: none;
+}
+.mn-wrap {
+  width: min(460px, 100%);
+  margin: auto; /* centred, but still scrollable when the frame is short */
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 2.4vh, 18px);
+}
+.mn-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.mn-logo {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  font-weight: 800;
+  line-height: 1;
+}
+.mn-marks {
+  display: flex;
+  gap: 14px;
+}
+.mn-marks .mark {
+  width: clamp(44px, 13vw, 64px);
+  height: clamp(44px, 13vw, 64px);
+  stroke-width: 11;
+}
+.mn-marks .mark.mx {
+  filter: drop-shadow(0 0 10px var(--pink));
+}
+.mn-marks .mark.mo {
+  filter: drop-shadow(0 0 10px var(--cyan));
+}
+.mn-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  letter-spacing: 0.04em;
+}
+.mn-name .lg-t {
+  font-size: clamp(32px, 10vw, 50px);
+}
+.mn-name .lg-u {
+  font-size: clamp(36px, 11vw, 56px);
+}
+.mn-group {
+  display: grid;
+  gap: 6px;
+}
+.mn-group[hidden] {
+  display: none;
+}
+.mn-lbl {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+}
+.mn-opts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.mn-opts button {
+  min-width: 0;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 16px;
+  font-size: 16px;
+  line-height: 1.15;
+  color: var(--dim);
+  background: #ffffff0d;
+  border: 2px solid #8a6bff40;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.mn-opts button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mn-opts button:hover {
+  color: #fff;
+  background: #ffffff17;
+}
+.mn-opts button:active {
+  transform: scale(0.96);
+}
+.mn-opts button.on {
+  color: #fff;
+  border-color: var(--cyan);
+  background: linear-gradient(180deg, #ff2bd633, #1ff4ff26);
+  box-shadow: 0 0 18px -4px var(--cyan), inset 0 0 16px -8px var(--cyan);
+}
+.mn-mode button {
+  min-height: 92px;
+  font-size: 17px;
+}
+.mn-mode button .ic {
+  font-size: 34px;
+}
+.mn-mode button.on .ic {
+  color: var(--gold);
+  filter: drop-shadow(0 0 6px #ffd23a99);
+}
+.mn-side button {
+  min-height: 62px;
+}
+.mn-side button .mark {
+  width: 32px;
+  height: 32px;
+}
+.mn-side button .ic {
+  font-size: 32px;
+}
+.mn-side button.on .ic {
+  color: var(--gold);
+}
+.mn-play {
+  margin-top: 4px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 20px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #1a0b3a;
+  background: linear-gradient(90deg, var(--pink), #b56bff 50%, var(--cyan));
+  box-shadow: 0 8px 30px -6px #ff2bd6aa, 0 0 0 0 #ff2bd666;
+  animation: mn-pulse 2.4s ease-in-out infinite;
+  transition: transform 0.1s;
+}
+.mn-play .ic {
+  font-size: 26px;
+}
+.mn-play:active {
+  transform: scale(0.97);
+}
+.mn-play:focus-visible,
+.mn-opts button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+@keyframes mn-pulse {
+  50% {
+    box-shadow: 0 8px 30px -6px #ff2bd6aa, 0 0 0 8px #ff2bd600;
+    filter: brightness(1.08);
+  }
+}
+.mn-resume {
+  min-height: 48px;
+  border-radius: 16px;
+  font-size: 17px;
+  color: #e9e1ff;
+  background: #ffffff0f;
+  border: 1px solid #8a6bff66;
+}
+.mn-resume[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mn-play {
+    animation: none;
+  }
+}
+/* short frames (landscape phones, small iframes): compact tiles */
+@media (max-height: 620px) {
+  .mn-marks {
+    display: none;
+  }
+  .mn-mode button {
+    min-height: 60px;
+    flex-direction: row;
+    gap: 8px;
+  }
+  .mn-mode button .ic {
+    font-size: 26px;
+  }
+  .mn-side button {
+    min-height: 50px;
+  }
+  .mn-play {
+    min-height: 54px;
+    font-size: 22px;
+  }
+}
+@media (max-width: 380px) {
+  .mn-mode button {
+    font-size: 15px;
+  }
+}
+
+/* in-game HUD on narrow screens: the big logo lives on the menu; icon-only secondary actions */
+@media (max-width: 440px) {
+  .top .logo {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .actions .act:not(.primary) span {
+    display: none;
+  }
+}
+@media (max-height: 520px) {
+  .menu {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .mn-wrap {
+    gap: 8px;
+  }
+  .mn-lbl {
+    display: none;
+  }
+  .mn-name .lg-t {
+    font-size: 28px;
+  }
+  .mn-name .lg-u {
+    font-size: 30px;
+  }
+  .mn-mode button {
+    min-height: 48px;
+  }
+  .mn-opts button {
+    min-height: 44px;
+  }
+  .mn-side button {
+    min-height: 44px;
+  }
+  .mn-side button .mark,
+  .mn-side button .ic {
+    width: 26px;
+    height: 26px;
+    font-size: 26px;
+  }
+  .mn-play {
+    min-height: 50px;
+    margin-top: 2px;
+  }
+}
+/* wide but short (landscape / small iframe): settings icons go to the corner to save a row */
+@media (max-height: 520px) and (min-width: 640px) {
+  .mn-top {
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+  }
+}
+/* online hub opened from the menu: keep the menu's backdrop (hides the board) but not its controls */
+body.online-open .mn-wrap {
+  visibility: hidden;
 }
